@@ -12,7 +12,7 @@
 
 ---
 
-This project is part of ***Principles of Computer Organisation*** and ***Embedded*** courses. It is a recreation of three artifact detectors from the game *S.T.A.L.K.E.R. 2: Heart of Chornobyl* using BLE and UWB technologies. Mentioned detectors are "**Echo**" (Відгук), "**Bear**" (Ведмідь) and "**Veles**" (Велес).
+This project is part of ***Principles of Computer Organisation*** and ***Embedded*** courses. It is a recreation of three artifact detectors from the game *S.T.A.L.K.E.R. 2: Heart of Chornobyl* using BLE and UWB technologies. Mentioned detectors are "**Echo**" detector (Відгук), "**Bear**" detector(Ведмідь) and "**Veles**" detector (Велес).
 
 ---
 
@@ -32,7 +32,9 @@ This project is part of ***Principles of Computer Organisation*** and ***Embedde
 ## Overview
 
 ### What is our project about?
-The goal of this project is to create three functional “artifact” detectors based on the game *S.T.A.L.K.E.R. 2: Heart of Chornobyl*. The detectors work by providing a more precise location of an artifact as the user approaches it. Since the game’s world is fictional, in the context of our project, an artifact is BLE beacon/UWB board, a separate device that emits a signal that can be located (read more in [features](#features) section). Depending on the type of detector, its operating principle varies between raw BLE and UWB with PDoA technique.
+The goal of this project is to create three functional “artifact” detectors based on the game *S.T.A.L.K.E.R. 2: Heart of Chornobyl*. The detectors work by providing a more precise location of an artifact as the user approaches it. Since the game’s world is fictional, in the context of our project, an artifact is BLE beacon/UWB board, a separate device that emits a signal that can be located (read more in [features](#features) section). Depending on the type of detector, its operating principle varies between raw BLE and UWB with PDoA technique. 
+
+While this project is inspired by the game, our research will also be relevant in areas such as locating missing item that acts as a beacon.
 
 ### Detectors' properties
 | Detector type  | Specification                                                                              |
@@ -43,8 +45,8 @@ The goal of this project is to create three functional “artifact” detectors 
 
 ### Project status
 - **Current Version:** Proof of concept.
-- **Development Status:** Active research.
-- **Last Updated:** 29.09.2026
+- **Development Status:** Artifact in development.
+- **Last Updated:** 28.10.2026.
 
 ### Work distribution
 - [Daryna Berezniuk](https://github.com/DarynaBerezniuk) &#8212; hardware & documenting;
@@ -53,8 +55,15 @@ The goal of this project is to create three functional “artifact” detectors 
 ---
 ## Features
 
+This project involves creating three devices, each with its own unique features, that point to a specific beacon.
+
+| Detector type | Technology used | Components needed |
+|---------------|-----------------|-------------------|
+|Echo detector| ||
+
 ### Hardware features
 - To be done
+
 ### Software features
 - To be done
 ### Design features
