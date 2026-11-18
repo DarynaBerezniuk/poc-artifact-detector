@@ -1,13 +1,16 @@
 idf_component_register(
-    SRCS 
+        SRCS
         "artifact_main.c"
         "deca_spi_esp32.c"
         "deca_driver/deca_device.c"
         "deca_driver/deca_params_init.c"
-    INCLUDE_DIRS 
+        INCLUDE_DIRS
         "."
         "deca_driver"
-    REQUIRES 
-        driver
+        REQUIRES
         esp_timer
+        PRIV_REQUIRES
+        esp_driver_gpio
+        esp_driver_spi
+        esp_driver_ledc
 )

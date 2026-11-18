@@ -7,7 +7,9 @@ idf_component_register(
     INCLUDE_DIRS 
         "."
         "deca_driver"
-    REQUIRES 
-        driver
+    REQUIRES
         esp_timer
+    PRIV_REQUIRES
+        esp_driver_gpio
+        esp_driver_spi
 )

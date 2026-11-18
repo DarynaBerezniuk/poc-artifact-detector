@@ -1,0 +1,30 @@
+idf_component_register(
+    SRCS
+        "bear_main.c"
+        "ui.c"
+        "gfx.c"
+        "gc9a01.c"
+        "nav.c"
+        "motion.c"
+        "uwb_range.c"
+        "i2c_bus.c"
+        "mpu6050.c"
+        "qmc5883p.c"
+        "madgwick.c"
+        "pdr.c"
+        "pf.c"
+        "range_filter.c"
+        "deca_spi_esp32.c"
+        "deca_driver/deca_device.c"
+        "deca_driver/deca_params_init.c"
+    INCLUDE_DIRS
+        "."
+        "deca_driver"
+    REQUIRES
+        esp_timer
+        nvs_flash
+    PRIV_REQUIRES
+        esp_driver_gpio
+        esp_driver_spi
+        esp_driver_i2c
+)
