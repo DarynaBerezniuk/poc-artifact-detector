@@ -51,3 +51,4 @@
 
 #define UI_FPS                  15
 #define LOG_CSV                 1
+#define LOG_AXES                1

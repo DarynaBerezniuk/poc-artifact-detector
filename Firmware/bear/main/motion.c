@@ -37,6 +37,7 @@ static mag_cal_t mcal = {{0, 0, 0}, {1, 1, 1}, 0.0f};
 static bool mcal_valid = false;
 static float gyro_bias[3];
 static float mag_last[3];
+static float dbg_acc[3], dbg_gyr[3], dbg_mag_raw[3];
 static uint32_t mag_last_ms = 0;
 static portMUX_TYPE pose_lock = portMUX_INITIALIZER_UNLOCKED;
 static pose_t pose;
@@ -158,9 +159,14 @@ static void imu_step(float dt, bool count_steps) {
     float acc[3], gyr[3];
     if (!read_imu(acc, gyr)) return;
     for (int i = 0; i < 3; i++) gyr[i] -= gyro_bias[i];
+    for (int i = 0; i < 3; i++) {
+        dbg_acc[i] = acc[i];
+        dbg_gyr[i] = gyr[i];
+    }
 
     float raw[3];
     if (read_mag_raw(raw)) {
+        for (int i = 0; i < 3; i++) dbg_mag_raw[i] = raw[i];
         mag_apply(raw, mag_last);
         mag_last_ms = now_ms();
     }
@@ -273,6 +279,11 @@ static void motion_task(void *arg) {
             ESP_LOGI(TAG, "psi %.0f roll %.0f pitch %.0f steps %lu pos %.1f,%.1f mag %d",
                      p.psi * 180.0f / (float)M_PI, p.roll * 180.0f / (float)M_PI, p.pitch * 180.0f / (float)M_PI,
                      (unsigned long)p.steps, p.x, p.y, p.mag_ok);
+#if LOG_AXES
+            ESP_LOGI(TAG, "AXES acc %.2f %.2f %.2f g | gyr %.2f %.2f %.2f rad/s | mag %.3f %.3f %.3f G",
+                     dbg_acc[0], dbg_acc[1], dbg_acc[2], dbg_gyr[0], dbg_gyr[1], dbg_gyr[2],
+                     dbg_mag_raw[0], dbg_mag_raw[1], dbg_mag_raw[2]);
+#endif
         }
     }
 }
