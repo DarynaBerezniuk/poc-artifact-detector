@@ -9,7 +9,7 @@
 #include "config.h"
 #include "i2c_bus.h"
 #include "mpu6050.h"
-#include "qmc5883p.h"
+#include "hmc5883l.h"
 #include "madgwick.h"
 #include "pdr.h"
 
@@ -60,7 +60,7 @@ static bool read_imu(float acc[3], float gyr[3]) {
 static bool read_mag_raw(float m[3]) {
     float r[3];
     bool fresh = false;
-    if (qmc5883p_read(r, &fresh) != ESP_OK || !fresh) return false;
+    if (hmc5883l_read(r, &fresh) != ESP_OK || !fresh) return false;
     remap(r, mag_idx, mag_sgn, m);
     return true;
 }
@@ -176,9 +176,9 @@ esp_err_t motion_init(void) {
         i2c_bus_scan();
         return e;
     }
-    e = qmc5883p_init();
+    e = hmc5883l_init();
     if (e != ESP_OK) {
-        ESP_LOGE(TAG, "QMC5883P not responding at 0x2C");
+        ESP_LOGE(TAG, "HMC5883L not responding at 0x1E");
         i2c_bus_scan();
         return e;
     }

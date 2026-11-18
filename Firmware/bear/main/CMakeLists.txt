@@ -9,7 +9,7 @@ idf_component_register(
         "uwb_range.c"
         "i2c_bus.c"
         "mpu6050.c"
-        "qmc5883p.c"
+        "hmc5883l.c"
         "madgwick.c"
         "pdr.c"
         "pf.c"

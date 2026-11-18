@@ -11,7 +11,7 @@
 #define LCD_CLOCK_HZ    40000000
 #define CHUNK_LINES     16
 #define CHUNK_BYTES     (LCD_W * CHUNK_LINES * 2)
-#define MADCTL_VALUE    0x08
+#define MADCTL_VALUE    0x48
 
 typedef struct {
     uint8_t cmd;
