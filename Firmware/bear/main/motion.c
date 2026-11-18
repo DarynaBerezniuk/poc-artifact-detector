@@ -87,10 +87,14 @@ static void cal_save(void) {
 
 static bool mag_calibrate(progress_cb_t cb) {
     float mn[3] = {1e9f, 1e9f, 1e9f}, mx[3] = {-1e9f, -1e9f, -1e9f};
+    float zsum = 0.0f;
+    uint32_t zn = 0;
     uint32_t t0 = now_ms();
     while (now_ms() - t0 < MAG_CAL_MS) {
         float m[3];
         if (read_mag_raw(m)) {
+            zsum += m[2];
+            zn++;
             for (int i = 0; i < 3; i++) {
                 if (m[i] < mn[i]) mn[i] = m[i];
                 if (m[i] > mx[i]) mx[i] = m[i];
@@ -100,11 +104,24 @@ static bool mag_calibrate(progress_cb_t cb) {
         vTaskDelay(pdMS_TO_TICKS(20));
     }
     float half[3], avg = 0.0f;
-    for (int i = 0; i < 3; i++) {
-        half[i] = 0.5f * (mx[i] - mn[i]);
-        if (half[i] < MAG_MIN_HALF_G) return false;
-        avg += half[i];
+    for (int i = 0; i < 3; i++) half[i] = 0.5f * (mx[i] - mn[i]);
+    if (half[0] < MAG_MIN_HALF_G || half[1] < MAG_MIN_HALF_G || zn == 0) return false;
+
+    float avg_xy = 0.5f * (half[0] + half[1]);
+    if (half[2] < 0.8f * avg_xy) {
+        float zmean = zsum / (float)zn;
+        for (int i = 0; i < 2; i++) {
+            mcal.off[i] = 0.5f * (mx[i] + mn[i]);
+            mcal.scl[i] = avg_xy / half[i];
+        }
+        mcal.off[2] = 0.0f;
+        mcal.scl[2] = 1.0f;
+        mcal.ref = sqrtf(avg_xy * avg_xy + zmean * zmean);
+        ESP_LOGW(TAG, "flat-only rotation: Z not calibrated (tumble the unit for a full calibration)");
+        return true;
     }
+    if (half[2] < MAG_MIN_HALF_G) return false;
+    for (int i = 0; i < 3; i++) avg += half[i];
     avg /= 3.0f;
     for (int i = 0; i < 3; i++) {
         mcal.off[i] = 0.5f * (mx[i] + mn[i]);
