@@ -156,6 +156,10 @@ bool uwb_measure(uint8_t seq, uwb_sample_t *out) {
         return false;
     }
 
+    float clock_ratio = 0.0f;
+#if UWB_CLOCK_CORRECT
+    clock_ratio = (float)dwt_readcarrierintegrator() * (float)(FREQ_OFFSET_MULTIPLIER * HERTZ_TO_PPM_MULTIPLIER_CHAN_2 / 1.0e6);
+#endif
     uint32_t frame_len = dwt_read32bitreg(RX_FINFO_ID) & RX_FINFO_RXFLEN_MASK;
     if (frame_len < (MSG_MIN_RESP_LEN + 2) || frame_len > sizeof(rx_buffer)) {
         return false;
@@ -174,7 +178,7 @@ bool uwb_measure(uint8_t seq, uwb_sample_t *out) {
     }
     int64_t rtd_init = (int32_t)(resp_rx_ts - poll_tx_ts);
     int64_t rtd_resp = (int32_t)(resp_tx_ts - poll_rx_ts);
-    double tof = ((rtd_init - rtd_resp) / 2.0) * DWT_TIME_UNITS;
+    double tof = ((rtd_init - rtd_resp * (1.0 - (double)clock_ratio)) / 2.0) * DWT_TIME_UNITS;
     float dist_m = (float)(tof * SPEED_OF_LIGHT) + RANGE_BIAS_M;
     if (dist_m < -0.5f || dist_m >= RANGE_MAX_M) {
         return false;

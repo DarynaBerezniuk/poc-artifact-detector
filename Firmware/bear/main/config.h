@@ -25,10 +25,11 @@
 #define UWB_SPI_MODE        2
 #define UWB_SPI_SLOW_HZ     500000
 #define UWB_SPI_FAST_HZ     4000000
+#define UWB_CLOCK_CORRECT       1
 #define UWB_ANT_DELAY           16436
 #define RANGE_BIAS_M            0.0f
 #define RANGE_MAX_JUMP_M        1.5f
-#define RANGE_EMA_ALPHA         0.35f
+#define RANGE_EMA_ALPHA         0.5f
 #define RANGE_MAX_M             30.0f
 #define RANGE_LOST_MS           3000
 #define RANGE_DIRECT_UNDER_M    3.0f

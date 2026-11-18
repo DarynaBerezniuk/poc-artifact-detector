@@ -180,7 +180,7 @@ void nav_view_update(nav_view_t *v) {
 
     v->have_range = true;
     float shown = s.range;
-    if (s.have_pf && !s.two) {
+    if (s.have_pf && !s.two && s.spread < NAV_TRACK_ENTER_SPREAD) {
         float pf_d = hypotf(s.ax - p.x, s.ay - p.y);
         float g = (4.0f - s.range) / 2.0f;
         if (g < 0.0f) g = 0.0f;
