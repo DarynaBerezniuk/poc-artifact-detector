@@ -15,7 +15,7 @@
 
 #define TAG "MOTION"
 #define NVS_NS          "bear"
-#define NVS_KEY_MAGCAL  "magcal"
+#define NVS_KEY_MAGCAL  "magcal2"
 #define MAG_MIN_HALF_G  0.10f
 #define MAG_FRESH_MS    100
 
@@ -36,6 +36,7 @@ static pdr_t pdr;
 static mag_cal_t mcal = {{0, 0, 0}, {1, 1, 1}, 0.0f};
 static bool mcal_valid = false;
 static float gyro_bias[3];
+static float acc_scale = 1.0f;
 static float mag_last[3];
 static float dbg_acc[3], dbg_gyr[3], dbg_mag_raw[3];
 static uint32_t mag_last_ms = 0;
@@ -54,6 +55,7 @@ static bool read_imu(float acc[3], float gyr[3]) {
     float a[3], g[3];
     if (mpu6050_read(a, g) != ESP_OK) return false;
     remap(a, imu_idx, imu_sgn, acc);
+    for (int i = 0; i < 3; i++) acc[i] *= acc_scale;
     remap(g, imu_idx, imu_sgn, gyr);
     return true;
 }
@@ -216,12 +218,15 @@ void motion_calibrate(progress_cb_t cb) {
     float sum[3] = {0, 0, 0};
     int n = 0;
     float acc_z = 0.0f;
+    float acc_norm = 0.0f;
+    acc_scale = 1.0f;
     uint32_t t0 = now_ms();
     while (now_ms() - t0 < GYRO_CAL_MS) {
         float a[3], g[3];
         if (read_imu(a, g)) {
             for (int i = 0; i < 3; i++) sum[i] += g[i];
             acc_z += a[2];
+            acc_norm += sqrtf(a[0] * a[0] + a[1] * a[1] + a[2] * a[2]);
             n++;
         }
         if (cb) cb("HOLD STILL", "GYRO", (float)(now_ms() - t0) / GYRO_CAL_MS);
@@ -230,7 +235,10 @@ void motion_calibrate(progress_cb_t cb) {
     if (n > 0) {
         for (int i = 0; i < 3; i++) gyro_bias[i] = sum[i] / n;
         acc_z /= n;
+        acc_norm /= n;
+        if (acc_norm > 0.8f && acc_norm < 1.5f) acc_scale = 1.0f / acc_norm;
     }
+    ESP_LOGI(TAG, "accel norm %.3f g, scale %.3f", acc_norm, acc_scale);
     ESP_LOGI(TAG, "gyro bias %.4f %.4f %.4f rad/s", gyro_bias[0], gyro_bias[1], gyro_bias[2]);
 
     bool force = acc_z < UPSIDE_DOWN_RECAL_G;

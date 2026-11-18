@@ -12,9 +12,9 @@
 #define UPSIDE_DOWN_RECAL_G     (-0.7f)
 
 #define IMU_AXIS_IDX            {0, 1, 2}
-#define IMU_AXIS_SIGN           {1, 1, 1}
+#define IMU_AXIS_SIGN           {1, -1, -1}
 #define MAG_AXIS_IDX            {0, 1, 2}
-#define MAG_AXIS_SIGN           {1, 1, 1}
+#define MAG_AXIS_SIGN           {1, -1, -1}
 #define SCREEN_UP_OFFSET_DEG    0.0f
 
 #define STEP_LENGTH_M           0.7f
