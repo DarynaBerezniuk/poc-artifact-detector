@@ -128,6 +128,7 @@ esp_err_t gc9a01_init(void) {
     spi_device_interface_config_t dev = {
         .clock_speed_hz = LCD_CLOCK_HZ,
         .mode = 0,
+        .flags = SPI_DEVICE_NO_DUMMY | SPI_DEVICE_HALFDUPLEX,
         .spics_io_num = LCD_PIN_CS,
         .queue_size = 2,
         .pre_cb = pre_cb,
