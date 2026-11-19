@@ -20,7 +20,7 @@
 #define SCREEN_UP_OFFSET_DEG    0.0f
 
 #define STEP_LENGTH_M           0.7f
-#define STEP_THRESHOLD_G        0.12f
+#define STEP_THRESHOLD_G        0.05f
 #define STEP_MIN_GAP_MS         250
 
 #define UWB_PERIOD_MS           100
@@ -53,7 +53,7 @@
 #define NAV_CLOSE_ENTER_M       2.0f
 #define NAV_CLOSE_EXIT_M        2.4f
 #define NAV_TRACK_ENTER_SPREAD  1.5f
-#define NAV_TRACK_MIN_WALK_M    4.0f
+#define NAV_TRACK_MIN_WALK_M    2.0f
 #define NAV_SEARCH_ENTER_SPREAD 2.0f
 #define NAV_ARROW_ALPHA         0.25f
 #define NAV_TWO_HOLD_MS         2000

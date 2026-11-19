@@ -256,7 +256,8 @@ void nav_view_update(nav_view_t *v) {
     prev = st;
     v->state = st;
 
-    if (st == NAV_TRACK && s.have_pf) {
+    bool arrow_ok = s.have_pf && !s.two && s.spread < NAV_SEARCH_ENTER_SPREAD && s.walked >= NAV_TRACK_MIN_WALK_M;
+    if (st == NAV_TRACK || (st == NAV_CLOSE && arrow_ok)) {
         float theta = atan2f(s.ax - p.x, s.ay - p.y);
         float rel = wrap_pi(theta - p.psi);
         if (!arrow_init) {

@@ -123,9 +123,14 @@ static void draw_frame(const nav_view_t *v, uint32_t t) {
         fmt_range(buf, sizeof(buf), v->range_m);
         switch (v->state) {
         case NAV_CLOSE:
-            gfx_text_center(CX, 88, buf, 6, COL_BRIGHT);
-            gfx_text_center(CX, 140, "M", 3, COL_MID);
-            gfx_text_center(CX, 168, "VERY CLOSE", 2, COL_AMBER);
+            if (v->have_arrow) {
+                draw_arrow(v->arrow_rad);
+                gfx_text_center(CX, 188, buf, 3, COL_AMBER);
+            } else {
+                gfx_text_center(CX, 88, buf, 6, COL_BRIGHT);
+                gfx_text_center(CX, 140, "M", 3, COL_MID);
+                gfx_text_center(CX, 168, "VERY CLOSE", 2, COL_AMBER);
+            }
             break;
         case NAV_TRACK:
             if (v->have_arrow) draw_arrow(v->arrow_rad);
