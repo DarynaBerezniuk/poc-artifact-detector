@@ -5,6 +5,8 @@
 #define IMU_BETA_ALIGN          2.0f
 #define IMU_ALIGN_MS            1500
 #define GYRO_CAL_MS             2000
+#define GYRO_CAL_TRIES         5
+#define GYRO_STILL_STD_RADS    0.03f
 #define MAG_CAL_MS              20000
 #define MAG_DISTURB_FRAC        0.20f
 #define ACC_VALID_MIN_G         0.7f

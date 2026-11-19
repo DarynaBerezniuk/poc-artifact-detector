@@ -215,22 +215,41 @@ esp_err_t motion_init(void) {
 
 void motion_calibrate(progress_cb_t cb) {
     memset(gyro_bias, 0, sizeof(gyro_bias));
-    float sum[3] = {0, 0, 0};
+    float sum[3], sumsq[3];
     int n = 0;
     float acc_z = 0.0f;
     float acc_norm = 0.0f;
     acc_scale = 1.0f;
-    uint32_t t0 = now_ms();
-    while (now_ms() - t0 < GYRO_CAL_MS) {
-        float a[3], g[3];
-        if (read_imu(a, g)) {
-            for (int i = 0; i < 3; i++) sum[i] += g[i];
-            acc_z += a[2];
-            acc_norm += sqrtf(a[0] * a[0] + a[1] * a[1] + a[2] * a[2]);
-            n++;
+    for (int attempt = 0; attempt < GYRO_CAL_TRIES; attempt++) {
+        memset(sum, 0, sizeof(sum));
+        memset(sumsq, 0, sizeof(sumsq));
+        n = 0;
+        acc_z = 0.0f;
+        acc_norm = 0.0f;
+        uint32_t t0 = now_ms();
+        while (now_ms() - t0 < GYRO_CAL_MS) {
+            float a[3], g[3];
+            if (read_imu(a, g)) {
+                for (int i = 0; i < 3; i++) {
+                    sum[i] += g[i];
+                    sumsq[i] += g[i] * g[i];
+                }
+                acc_z += a[2];
+                acc_norm += sqrtf(a[0] * a[0] + a[1] * a[1] + a[2] * a[2]);
+                n++;
+            }
+            if (cb) cb("HOLD STILL", "GYRO", (float)(now_ms() - t0) / GYRO_CAL_MS);
+            vTaskDelay(pdMS_TO_TICKS(1000 / IMU_RATE_HZ));
         }
-        if (cb) cb("HOLD STILL", "GYRO", (float)(now_ms() - t0) / GYRO_CAL_MS);
-        vTaskDelay(pdMS_TO_TICKS(1000 / IMU_RATE_HZ));
+        float worst = 0.0f;
+        for (int i = 0; n > 0 && i < 3; i++) {
+            float m = sum[i] / n;
+            float var = sumsq[i] / n - m * m;
+            float sd = var > 0.0f ? sqrtf(var) : 0.0f;
+            if (sd > worst) worst = sd;
+        }
+        if (worst < GYRO_STILL_STD_RADS) break;
+        ESP_LOGW(TAG, "unit moved during gyro calibration (std %.3f rad/s), retrying", worst);
     }
     if (n > 0) {
         for (int i = 0; i < 3; i++) gyro_bias[i] = sum[i] / n;
