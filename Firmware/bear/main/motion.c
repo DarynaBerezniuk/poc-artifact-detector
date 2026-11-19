@@ -267,6 +267,12 @@ void motion_calibrate(progress_cb_t cb) {
 
     bool force = acc_z < UPSIDE_DOWN_RECAL_G;
     mcal_valid = !force && cal_load();
+    if (mcal_valid) {
+        bool flat = mcal.off[2] == 0.0f && mcal.scl[2] == 1.0f;
+        ESP_LOGI(TAG, "mag cal loaded off %.3f %.3f %.3f scl %.3f %.3f %.3f ref %.3f G%s",
+                 mcal.off[0], mcal.off[1], mcal.off[2], mcal.scl[0], mcal.scl[1], mcal.scl[2], mcal.ref,
+                 flat ? " (flat-only, Z not calibrated)" : "");
+    }
     if (!mcal_valid) {
         if (force) ESP_LOGI(TAG, "upside-down boot, forcing magnetometer calibration");
         if (mag_calibrate(cb)) {

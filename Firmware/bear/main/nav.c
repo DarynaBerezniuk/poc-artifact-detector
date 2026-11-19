@@ -201,6 +201,8 @@ static float wrap_pi(float a) {
 
 void nav_view_update(nav_view_t *v) {
     static nav_state_t prev = NAV_LOST;
+    static bool two_prev = false;
+    static uint32_t two_since = 0;
     static float sx = 0.0f, sy = 1.0f;
     static bool arrow_init = false;
 
@@ -224,12 +226,15 @@ void nav_view_update(nav_view_t *v) {
         v->state = NAV_LOST;
         prev = NAV_LOST;
         arrow_init = false;
+        two_prev = false;
         return;
     }
 
     v->have_range = true;
     v->range_m = s.range;
-    v->two_clusters = s.two;
+    if (s.two && !two_prev) two_since = t;
+    two_prev = s.two;
+    v->two_clusters = s.two && (t - two_since) >= NAV_TWO_HOLD_MS;
     v->spread_m = s.spread;
     v->trend = s.trend;
 

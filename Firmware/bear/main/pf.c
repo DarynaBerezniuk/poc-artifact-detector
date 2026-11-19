@@ -3,7 +3,7 @@
 #include <string.h>
 
 #define JITTER_M          0.15f
-#define CLUSTER_MIN_W     0.2f
+#define CLUSTER_MIN_W     0.3f
 #define CLUSTER_MIN_SEP   1.0f
 #define CLUSTER_DOMINANT  0.85f
 
