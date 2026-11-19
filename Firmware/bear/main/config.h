@@ -30,7 +30,7 @@
 #define MAG_AXIS_SIGN           {1, 1, 1}
 #define SCREEN_UP_OFFSET_DEG    0.0f
 
-#define STEP_LENGTH_M           0.7f
+#define STEP_LENGTH_M           0.53f
 #define STEP_THRESHOLD_G        0.05f
 #define STEP_MIN_GAP_MS         250
 
