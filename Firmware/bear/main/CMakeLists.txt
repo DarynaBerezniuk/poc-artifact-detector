@@ -12,6 +12,7 @@ idf_component_register(
         "mpu6050.c"
         "hmc5883l.c"
         "madgwick.c"
+        "mag_kf.c"
         "pdr.c"
         "pf.c"
         "range_filter.c"

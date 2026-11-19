@@ -11,6 +11,7 @@
 #include "mpu6050.h"
 #include "hmc5883l.h"
 #include "madgwick.h"
+#include "mag_kf.h"
 #include "pdr.h"
 
 #define TAG "MOTION"
@@ -31,6 +32,7 @@ static const int mag_idx[3] = MAG_AXIS_IDX;
 static const int mag_sgn[3] = MAG_AXIS_SIGN;
 
 static madgwick_t filt;
+static mag_kf_t mkf;
 static stepdet_t sdet;
 static pdr_t pdr;
 static mag_cal_t mcal = {{0, 0, 0}, {1, 1, 1}, 0.0f};
@@ -40,6 +42,7 @@ static float acc_scale = 1.0f;
 static float mag_last[3];
 static float dbg_acc[3], dbg_gyr[3], dbg_mag_raw[3];
 static uint32_t mag_last_ms = 0;
+static uint32_t mag_rejects = 0;
 static portMUX_TYPE pose_lock = portMUX_INITIALIZER_UNLOCKED;
 static pose_t pose;
 
@@ -166,11 +169,17 @@ static void imu_step(float dt, bool count_steps) {
         dbg_gyr[i] = gyr[i];
     }
 
+    mag_kf_predict(&mkf, gyr, dt);
     float raw[3];
     if (read_mag_raw(raw)) {
         for (int i = 0; i < 3; i++) dbg_mag_raw[i] = raw[i];
-        mag_apply(raw, mag_last);
-        mag_last_ms = now_ms();
+        float cal[3];
+        mag_apply(raw, cal);
+        if (mag_kf_update(&mkf, cal)) mag_last_ms = now_ms();
+        else mag_rejects++;
+    }
+    if (mkf.inited) {
+        for (int i = 0; i < 3; i++) mag_last[i] = mkf.m[i];
     }
 
     float an = sqrtf(acc[0] * acc[0] + acc[1] * acc[1] + acc[2] * acc[2]);
@@ -207,6 +216,7 @@ esp_err_t motion_init(void) {
         i2c_bus_scan();
         return e;
     }
+    mag_kf_init(&mkf, MAG_KF_Q, MAG_KF_R, MAG_KF_GATE, MAG_KF_MAX_REJECTS);
     stepdet_init(&sdet, IMU_RATE_HZ, STEP_THRESHOLD_G, STEP_MIN_GAP_MS);
     pdr_init(&pdr, STEP_LENGTH_M);
     memset(&pose, 0, sizeof(pose));
@@ -318,9 +328,12 @@ static void motion_task(void *arg) {
                      p.psi * 180.0f / (float)M_PI, p.roll * 180.0f / (float)M_PI, p.pitch * 180.0f / (float)M_PI,
                      (unsigned long)p.steps, p.x, p.y, p.mag_ok);
 #if LOG_AXES
-            ESP_LOGI(TAG, "AXES acc %.2f %.2f %.2f g | gyr %.2f %.2f %.2f rad/s | mag %.3f %.3f %.3f G",
+            ESP_LOGI(TAG, "AXES acc %.2f %.2f %.2f g | gyr %.2f %.2f %.2f rad/s | mag %.3f %.3f %.3f G | kf %.3f %.3f %.3f |%.3f| G rej %lu",
                      dbg_acc[0], dbg_acc[1], dbg_acc[2], dbg_gyr[0], dbg_gyr[1], dbg_gyr[2],
-                     dbg_mag_raw[0], dbg_mag_raw[1], dbg_mag_raw[2]);
+                     dbg_mag_raw[0], dbg_mag_raw[1], dbg_mag_raw[2], mkf.m[0], mkf.m[1], mkf.m[2],
+                     sqrtf(mkf.m[0] * mkf.m[0] + mkf.m[1] * mkf.m[1] + mkf.m[2] * mkf.m[2]),
+                     (unsigned long)mag_rejects);
+            mag_rejects = 0;
 #endif
         }
     }

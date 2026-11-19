@@ -9,6 +9,10 @@
 #define GYRO_STILL_STD_RADS    0.08f
 #define MAG_CAL_MS              20000
 #define MAG_DISTURB_FRAC        0.20f
+#define MAG_KF_Q                1e-3f
+#define MAG_KF_R                4e-4f
+#define MAG_KF_GATE             4.0f
+#define MAG_KF_MAX_REJECTS      25
 #define ACC_VALID_MIN_G         0.7f
 #define ACC_VALID_MAX_G         1.3f
 #define UPSIDE_DOWN_RECAL_G     (-0.7f)
