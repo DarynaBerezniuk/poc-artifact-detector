@@ -12,11 +12,13 @@
 #include "hmc5883l.h"
 #include "madgwick.h"
 #include "mag_kf.h"
+#include "gyro_bias.h"
 #include "pdr.h"
 
 #define TAG "MOTION"
 #define NVS_NS          "bear"
-#define NVS_KEY_MAGCAL  "magcal2"
+#define NVS_KEY_MAGCAL  "magcal3"
+#define NVS_KEY_GBIAS   "gyrobias"
 #define MAG_MIN_HALF_G  0.10f
 #define MAG_FRESH_MS    100
 
@@ -38,11 +40,15 @@ static pdr_t pdr;
 static mag_cal_t mcal = {{0, 0, 0}, {1, 1, 1}, 0.0f};
 static bool mcal_valid = false;
 static float gyro_bias[3];
+static gyro_bias_t gb;
 static float acc_scale = 1.0f;
 static float mag_last[3];
 static float dbg_acc[3], dbg_gyr[3], dbg_mag_raw[3];
 static uint32_t mag_last_ms = 0;
 static uint32_t mag_rejects = 0;
+static float dip_avg = 0.0f;
+static int dip_n = 0;
+static bool dip_warned = false;
 static portMUX_TYPE pose_lock = portMUX_INITIALIZER_UNLOCKED;
 static pose_t pose;
 
@@ -87,6 +93,29 @@ static void cal_save(void) {
     nvs_handle_t h;
     if (nvs_open(NVS_NS, NVS_READWRITE, &h) != ESP_OK) return;
     nvs_set_blob(h, NVS_KEY_MAGCAL, &mcal, sizeof(mcal));
+    nvs_commit(h);
+    nvs_close(h);
+}
+
+static bool gbias_load(float b[3]) {
+    nvs_handle_t h;
+    if (nvs_open(NVS_NS, NVS_READONLY, &h) != ESP_OK) return false;
+    float tmp[3];
+    size_t len = sizeof(tmp);
+    esp_err_t e = nvs_get_blob(h, NVS_KEY_GBIAS, tmp, &len);
+    nvs_close(h);
+    if (e != ESP_OK || len != sizeof(tmp)) return false;
+    for (int i = 0; i < 3; i++) {
+        if (!(fabsf(tmp[i]) < GB_MAX_BIAS_RADS)) return false;
+        b[i] = tmp[i];
+    }
+    return true;
+}
+
+static void gbias_save(const float b[3]) {
+    nvs_handle_t h;
+    if (nvs_open(NVS_NS, NVS_READWRITE, &h) != ESP_OK) return;
+    nvs_set_blob(h, NVS_KEY_GBIAS, b, 3 * sizeof(float));
     nvs_commit(h);
     nvs_close(h);
 }
@@ -163,7 +192,9 @@ static void publish(void) {
 static void imu_step(float dt, bool count_steps) {
     float acc[3], gyr[3];
     if (!read_imu(acc, gyr)) return;
-    for (int i = 0; i < 3; i++) gyr[i] -= gyro_bias[i];
+    float an = sqrtf(acc[0] * acc[0] + acc[1] * acc[1] + acc[2] * acc[2]);
+    gyro_bias_update(&gb, gyr, an, dt);
+    for (int i = 0; i < 3; i++) gyr[i] -= gb.b[i];
     for (int i = 0; i < 3; i++) {
         dbg_acc[i] = acc[i];
         dbg_gyr[i] = gyr[i];
@@ -182,7 +213,6 @@ static void imu_step(float dt, bool count_steps) {
         for (int i = 0; i < 3; i++) mag_last[i] = mkf.m[i];
     }
 
-    float an = sqrtf(acc[0] * acc[0] + acc[1] * acc[1] + acc[2] * acc[2]);
     bool acc_ok = an > ACC_VALID_MIN_G && an < ACC_VALID_MAX_G;
 
     bool mag_ok = false;
@@ -269,6 +299,14 @@ void motion_calibrate(progress_cb_t cb) {
         ESP_LOGW(TAG, "unit moved during gyro calibration (std %.3f rad/s), retrying", worst);
     }
     for (int i = 0; i < 3; i++) gyro_bias[i] = best_bias[i];
+    if (best_sd < GYRO_STILL_STD_RADS) {
+        gbias_save(gyro_bias);
+    } else if (gbias_load(gyro_bias)) {
+        ESP_LOGW(TAG, "unit was never still, using the gyro bias saved from an earlier boot");
+    } else {
+        ESP_LOGW(TAG, "unit was never still and no saved gyro bias, using the stillest window");
+    }
+    gyro_bias_init(&gb, gyro_bias);
     acc_z = best_acc_z;
     acc_norm = best_acc_norm;
     if (acc_norm > 0.8f && acc_norm < 1.5f) acc_scale = 1.0f / acc_norm;
@@ -328,11 +366,24 @@ static void motion_task(void *arg) {
                      p.psi * 180.0f / (float)M_PI, p.roll * 180.0f / (float)M_PI, p.pitch * 180.0f / (float)M_PI,
                      (unsigned long)p.steps, p.x, p.y, p.mag_ok);
 #if LOG_AXES
-            ESP_LOGI(TAG, "AXES acc %.2f %.2f %.2f g | gyr %.2f %.2f %.2f rad/s | mag %.3f %.3f %.3f G | kf %.3f %.3f %.3f |%.3f| G rej %lu",
+            float kn = sqrtf(mkf.m[0] * mkf.m[0] + mkf.m[1] * mkf.m[1] + mkf.m[2] * mkf.m[2]);
+            float an = sqrtf(dbg_acc[0] * dbg_acc[0] + dbg_acc[1] * dbg_acc[1] + dbg_acc[2] * dbg_acc[2]);
+            float dip = 0.0f;
+            if (kn > 1e-6f && an > 1e-6f) {
+                float c = -(mkf.m[0] * dbg_acc[0] + mkf.m[1] * dbg_acc[1] + mkf.m[2] * dbg_acc[2]) / (kn * an);
+                if (c > 1.0f) c = 1.0f;
+                if (c < -1.0f) c = -1.0f;
+                dip = asinf(c) * 180.0f / (float)M_PI;
+                dip_avg += (dip - dip_avg) / (float)(dip_n < 10 ? ++dip_n : 10);
+                if (dip_n >= 10 && dip_avg < -20.0f && !dip_warned) {
+                    dip_warned = true;
+                    ESP_LOGE(TAG, "magnetic field points up (dip %.0f deg): the magnetometer is mounted flipped, fix MAG_AXIS_SIGN", dip_avg);
+                }
+            }
+            ESP_LOGI(TAG, "AXES acc %.2f %.2f %.2f g | gyr %.2f %.2f %.2f rad/s | mag %.3f %.3f %.3f G | kf %.3f %.3f %.3f |%.3f| G dip %.0f rej %lu | bias %.3f %.3f %.3f",
                      dbg_acc[0], dbg_acc[1], dbg_acc[2], dbg_gyr[0], dbg_gyr[1], dbg_gyr[2],
-                     dbg_mag_raw[0], dbg_mag_raw[1], dbg_mag_raw[2], mkf.m[0], mkf.m[1], mkf.m[2],
-                     sqrtf(mkf.m[0] * mkf.m[0] + mkf.m[1] * mkf.m[1] + mkf.m[2] * mkf.m[2]),
-                     (unsigned long)mag_rejects);
+                     dbg_mag_raw[0], dbg_mag_raw[1], dbg_mag_raw[2], mkf.m[0], mkf.m[1], mkf.m[2], kn, dip,
+                     (unsigned long)mag_rejects, gb.b[0], gb.b[1], gb.b[2]);
             mag_rejects = 0;
 #endif
         }

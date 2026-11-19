@@ -7,6 +7,12 @@
 #define GYRO_CAL_MS             2000
 #define GYRO_CAL_TRIES         5
 #define GYRO_STILL_STD_RADS    0.08f
+#define GB_WINDOW_S             0.5f
+#define GB_STILL_STD_RADS       0.02f
+#define GB_STILL_ACC_STD_G      0.01f
+#define GB_MAX_BIAS_RADS        0.25f
+#define GB_STILL_MS             1500
+#define GB_TAU_S                2.0f
 #define MAG_CAL_MS              20000
 #define MAG_DISTURB_FRAC        0.20f
 #define MAG_KF_Q                1e-3f
@@ -20,7 +26,7 @@
 #define IMU_AXIS_IDX            {0, 1, 2}
 #define IMU_AXIS_SIGN           {1, -1, -1}
 #define MAG_AXIS_IDX            {0, 1, 2}
-#define MAG_AXIS_SIGN           {1, -1, -1}
+#define MAG_AXIS_SIGN           {1, 1, 1}
 #define SCREEN_UP_OFFSET_DEG    0.0f
 
 #define STEP_LENGTH_M           0.7f
@@ -56,7 +62,8 @@
 
 #define NAV_CLOSE_ENTER_M       2.0f
 #define NAV_CLOSE_EXIT_M        2.4f
-#define NAV_ARROW_MIN_M         0.5f
+#define NAV_ARROW_MIN_M         1.0f
+#define NAV_ARROW_HYST_M        0.2f
 #define NAV_TRACK_ENTER_SPREAD  1.5f
 #define NAV_TRACK_MIN_WALK_M    2.0f
 #define NAV_SEARCH_ENTER_SPREAD 2.0f
