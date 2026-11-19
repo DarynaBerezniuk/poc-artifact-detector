@@ -122,19 +122,27 @@ static void nav_task(void *arg) {
                     upd_y = p.y;
                     upd_ms = t;
                 }
-                float walked = p.path - pf.path_at_init;
+                float sig = hypotf(PF_SIGMA_BASE_M, PF_SIGMA_WALK_COEF * (p.path - pf.path_at_init));
+                if (!p.mag_ok) sig *= PF_SIGMA_NOMAG_FACTOR;
+                if (sig > PF_SIGMA_MAX_M) sig = PF_SIGMA_MAX_M;
                 float moved = hypotf(p.x - upd_x, p.y - upd_y);
                 if (!fresh_ring && (moved >= PF_MIN_MOVE_M || (t - upd_ms) >= PF_MAX_IDLE_MS)) {
-                    float sig = hypotf(PF_SIGMA_BASE_M, PF_SIGMA_WALK_COEF * walked);
-                    if (!p.mag_ok) sig *= PF_SIGMA_NOMAG_FACTOR;
-                    if (sig > PF_SIGMA_MAX_M) sig = PF_SIGMA_MAX_M;
                     pf_update(&pf, p.x, p.y, r, sig * scale);
                     upd_x = p.x;
                     upd_y = p.y;
                     upd_ms = t;
                 }
+                if (!fresh_ring && pf_stale(&pf, p.x, p.y, r, PF_STALE_ERR_M + 2.0f * sig, t, PF_STALE_MS)) {
+                    ESP_LOGW(TAG, "estimate does not fit the range any more (off by %.1f m), starting over",
+                             pf_residual(&pf, p.x, p.y, r));
+                    pf_init_ring(&pf, p.x, p.y, r, p.path);
+                    ring_path = p.path;
+                    upd_x = p.x;
+                    upd_y = p.y;
+                    upd_ms = t;
+                }
                 pf_estimate(&pf, &est);
-                est.spread = hypotf(est.spread, PF_SPREAD_DRIFT_COEF * walked);
+                est.spread = hypotf(est.spread, PF_SPREAD_DRIFT_COEF * (p.path - pf.path_at_init));
 
                 float sm = rf_smoothed(&rf);
                 hist_push(t, sm);

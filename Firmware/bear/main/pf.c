@@ -47,6 +47,7 @@ void pf_init_ring(pf_t *pf, float px, float py, float r, float path) {
     pf->path_at_init = path;
     pf->init_x = px;
     pf->init_y = py;
+    pf->stale = false;
 }
 
 void pf_reseed_around(pf_t *pf, float x, float y, float spread, float path) {
@@ -57,6 +58,7 @@ void pf_reseed_around(pf_t *pf, float x, float y, float spread, float path) {
     }
     pf->inited = true;
     pf->path_at_init = path;
+    pf->stale = false;
 }
 
 static void resample(pf_t *pf) {
@@ -186,4 +188,27 @@ void pf_estimate(const pf_t *pf, pf_est_t *est) {
             est->spread = d == 0 ? sd0 : sd1;
         }
     }
+}
+
+float pf_residual(const pf_t *pf, float px, float py, float r) {
+    float res = 0.0f;
+    for (int i = 0; i < PF_N; i++) {
+        float d = hypotf(pf->x[i] - px, pf->y[i] - py);
+        res += pf->w[i] * fabsf(d - r);
+    }
+    return res;
+}
+
+bool pf_stale(pf_t *pf, float px, float py, float r, float thr, uint32_t t_ms, uint32_t hold_ms) {
+    if (!pf->inited) return false;
+    if (pf_residual(pf, px, py, r) <= thr) {
+        pf->stale = false;
+        return false;
+    }
+    if (!pf->stale) {
+        pf->stale = true;
+        pf->stale_since_ms = t_ms;
+        return false;
+    }
+    return (t_ms - pf->stale_since_ms) >= hold_ms;
 }

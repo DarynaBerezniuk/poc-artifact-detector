@@ -47,6 +47,8 @@
 #define PF_MAX_IDLE_MS          3000
 #define PF_SIGMA_NOMAG_FACTOR   1.5f
 #define PF_SPREAD_DRIFT_COEF    0.05f
+#define PF_STALE_ERR_M          1.5f
+#define PF_STALE_MS             2000
 
 #define NAV_CLOSE_ENTER_M       2.0f
 #define NAV_CLOSE_EXIT_M        2.4f

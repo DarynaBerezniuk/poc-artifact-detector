@@ -12,6 +12,8 @@ typedef struct {
     bool inited;
     float path_at_init;
     float init_x, init_y;
+    bool stale;
+    uint32_t stale_since_ms;
 } pf_t;
 
 typedef struct {
@@ -28,3 +30,5 @@ void pf_init_ring(pf_t *pf, float px, float py, float r, float path);
 void pf_reseed_around(pf_t *pf, float x, float y, float spread, float path);
 void pf_update(pf_t *pf, float px, float py, float r, float sigma);
 void pf_estimate(const pf_t *pf, pf_est_t *est);
+float pf_residual(const pf_t *pf, float px, float py, float r);
+bool pf_stale(pf_t *pf, float px, float py, float r, float thr, uint32_t t_ms, uint32_t hold_ms);
