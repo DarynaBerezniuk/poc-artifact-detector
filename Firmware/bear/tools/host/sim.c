@@ -135,17 +135,27 @@ static int test_pf(int curved, int move_at, float *err_out) {
     return resets;
 }
 
-static int test_steps(void) {
+static int count_steps(float thr, float amp, float noise, float shake_amp, float shake_hz) {
     stepdet_t sd;
-    stepdet_init(&sd, 100.0f, 0.12f, 250);
+    stepdet_init(&sd, IMU_RATE_HZ, thr, STEP_MIN_GAP_MS);
     int steps = 0;
     for (int i = 0; i < 2000; i++) {
         float t = i / 100.0f;
-        float a = 1.0f + 0.35f * fmaxf(0, sinf(2 * M_PI * 1.8f * t)) + 0.03f * gauss();
+        float a = 1.0f + amp * fmaxf(0, sinf(2 * M_PI * 1.8f * t)) + noise * gauss()
+                  + shake_amp * sinf(2 * M_PI * shake_hz * t);
         if (stepdet_update(&sd, a, (uint32_t)(i * 10))) steps++;
     }
-    printf("steps detected in 20 s at 1.8 Hz: %d (expect ~36)\n", steps);
-    return (steps < 32 || steps > 40);
+    return steps;
+}
+
+static int test_steps(void) {
+    int normal = count_steps(STEP_THRESHOLD_G, 0.35f, 0.03f, 0.0f, 0.0f);
+    int gentle = count_steps(STEP_THRESHOLD_G, 0.12f, 0.01f, 0.0f, 0.0f);
+    int rest = count_steps(STEP_THRESHOLD_G, 0.0f, 0.015f, 0.0f, 0.0f);
+    int shake = count_steps(STEP_THRESHOLD_G, 0.0f, 0.015f, 0.02f, 6.0f);
+    printf("steps in 20 s at 1.8 Hz: normal %d, gentle %d (expect ~36); at rest %d, hand tremor %d (expect 0)\n",
+           normal, gentle, rest, shake);
+    return (normal < 32 || normal > 40) || (gentle < 32 || gentle > 40) || rest > 0 || shake > 0;
 }
 
 int main(void) {
