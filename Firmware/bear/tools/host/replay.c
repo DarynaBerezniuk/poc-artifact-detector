@@ -36,6 +36,9 @@ typedef struct {
 static anchor_t anchors[MAX_ANCHORS];
 static int n_anchors = 0;
 static double arrow_checks = 0, arrow_good = 0, arrow_err_sum = 0;
+static double jit_sum[3], jit_time[3], flips[3];
+static int prev_arrow_valid = 0;
+static float prev_arrow = 0;
 
 static const char *names[] = {"SEARCH", "TRACK", "CLOSE", "LOST"};
 
@@ -118,6 +121,22 @@ static void process(unsigned long t, float x, float y, float raw, float nlos, fl
             if (e <= 45.0f) arrow_good++;
         }
     }
+    float world_bearing = v.arrow_rad + p.psi;
+    if (v.have_arrow && prev_arrow_valid && last_view_t) {
+        float d = world_bearing - prev_arrow;
+        while (d > (float)M_PI) d -= 2.0f * (float)M_PI;
+        while (d < -(float)M_PI) d += 2.0f * (float)M_PI;
+        d = fabsf(d) * 180.0f / (float)M_PI;
+        int band = snap.range < 2.0f ? 0 : (snap.range < 4.0f ? 1 : 2);
+        double dt = (t - last_view_t) / 1000.0;
+        if (dt > 0 && dt <= 0.5) {
+            jit_sum[band] += d;
+            jit_time[band] += dt;
+            if (d > 45.0f) flips[band]++;
+        }
+    }
+    prev_arrow_valid = v.have_arrow;
+    prev_arrow = world_bearing;
     if (last_view_t) {
         double dt = (t - last_view_t) / 1000.0;
         if (dt > 0.5) dt = 0.5;
@@ -289,6 +308,15 @@ int main(int argc, char **argv) {
                n_anchors, 100 * arrow_good / arrow_checks, arrow_err_sum / arrow_checks, (int)(arrow_checks / passes));
     else
         printf("  arrow check: no near-artifact spots in the log to compare with\n");
+    {
+        static const char *bands[] = {"< 2 m", "2-4 m", "> 4 m"};
+        printf("  shown arrow direction noise (turning of the device excluded):");
+        for (int b = 0; b < 3; b++)
+            if (jit_time[b] > 0)
+                printf("  %s %.0f deg/s (%.1f jumps >45 deg per min)", bands[b], jit_sum[b] / jit_time[b],
+                       60.0 * flips[b] / jit_time[b]);
+        printf("\n");
+    }
     if (dev.t_total > 0) {
         double D = dev.t_total;
         printf("device (firmware that wrote the log), %.0f s:\n", dev.t_total);
