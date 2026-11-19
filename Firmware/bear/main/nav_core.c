@@ -177,6 +177,7 @@ void navc_view(nav_view_state_t *vs, const nav_snap_t *s, const nav_pose_t *p, u
             vs->sy += NAV_ARROW_ALPHA * (cosf(rel) - vs->sy);
         }
         v->arrow_rad = atan2f(vs->sx, vs->sy);
+        if (NAV_ARROW_INVERT) v->arrow_rad = wrap_pi(v->arrow_rad + (float)M_PI);
         v->have_arrow = true;
     } else {
         vs->arrow_init = false;
