@@ -18,7 +18,7 @@
 
 typedef struct {
     bool have_pf;
-    float ax, ay, spread;
+    float ax, ay, spread, walked;
     bool two;
     float range;
     bool have_range;
@@ -34,6 +34,9 @@ typedef struct {
 static portMUX_TYPE shared_lock = portMUX_INITIALIZER_UNLOCKED;
 static nav_shared_t shared;
 static pf_t pf;
+static float ring_path = 0.0f;
+static float upd_x = 0.0f, upd_y = 0.0f;
+static uint32_t upd_ms = 0;
 static range_filter_t rf;
 static hist_t hist[HIST_LEN];
 static int hist_head = 0;
@@ -100,18 +103,38 @@ static void nav_task(void *arg) {
             float r, scale;
             if (rf_push(&rf, s.dist_m, s.nlos_db, &r, &scale)) {
                 pf_est_t est;
+                bool fresh_ring = false;
                 if (!pf.inited) {
                     pf_init_ring(&pf, p.x, p.y, r, p.path);
+                    fresh_ring = true;
                 } else if (p.path - pf.path_at_init > PF_WINDOW_M) {
                     pf_estimate(&pf, &est);
-                    if (est.two_clusters) pf_init_ring(&pf, p.x, p.y, r, p.path);
-                    else pf_reseed_around(&pf, est.x, est.y, PF_RESEED_SPREAD_M, p.path);
+                    if (est.two_clusters) {
+                        pf_init_ring(&pf, p.x, p.y, r, p.path);
+                        fresh_ring = true;
+                    } else {
+                        pf_reseed_around(&pf, est.x, est.y, PF_RESEED_SPREAD_M, p.path);
+                    }
+                }
+                if (fresh_ring) {
+                    ring_path = p.path;
+                    upd_x = p.x;
+                    upd_y = p.y;
+                    upd_ms = t;
                 }
                 float walked = p.path - pf.path_at_init;
-                float sig = hypotf(PF_SIGMA_BASE_M, PF_SIGMA_WALK_COEF * walked);
-                if (sig > PF_SIGMA_MAX_M) sig = PF_SIGMA_MAX_M;
-                pf_update(&pf, p.x, p.y, r, sig * scale);
+                float moved = hypotf(p.x - upd_x, p.y - upd_y);
+                if (!fresh_ring && (moved >= PF_MIN_MOVE_M || (t - upd_ms) >= PF_MAX_IDLE_MS)) {
+                    float sig = hypotf(PF_SIGMA_BASE_M, PF_SIGMA_WALK_COEF * walked);
+                    if (!p.mag_ok) sig *= PF_SIGMA_NOMAG_FACTOR;
+                    if (sig > PF_SIGMA_MAX_M) sig = PF_SIGMA_MAX_M;
+                    pf_update(&pf, p.x, p.y, r, sig * scale);
+                    upd_x = p.x;
+                    upd_y = p.y;
+                    upd_ms = t;
+                }
                 pf_estimate(&pf, &est);
+                est.spread = hypotf(est.spread, PF_SPREAD_DRIFT_COEF * walked);
 
                 float sm = rf_smoothed(&rf);
                 hist_push(t, sm);
@@ -122,6 +145,7 @@ static void nav_task(void *arg) {
                 shared.ax = est.x;
                 shared.ay = est.y;
                 shared.spread = est.spread;
+                shared.walked = p.path - ring_path;
                 shared.two = est.two_clusters;
                 shared.range = sm;
                 shared.have_range = true;
@@ -196,15 +220,7 @@ void nav_view_update(nav_view_t *v) {
     }
 
     v->have_range = true;
-    float shown = s.range;
-    if (s.have_pf && !s.two && s.spread < NAV_TRACK_ENTER_SPREAD) {
-        float pf_d = hypotf(s.ax - p.x, s.ay - p.y);
-        float g = (4.0f - s.range) / 2.0f;
-        if (g < 0.0f) g = 0.0f;
-        if (g > 1.0f) g = 1.0f;
-        shown = g * s.range + (1.0f - g) * pf_d;
-    }
-    v->range_m = shown;
+    v->range_m = s.range;
     v->two_clusters = s.two;
     v->spread_m = s.spread;
     v->trend = s.trend;
@@ -219,7 +235,7 @@ void nav_view_update(nav_view_t *v) {
         st = NAV_CLOSE;
     } else if (s.two || s.spread > NAV_SEARCH_ENTER_SPREAD || !s.have_pf) {
         st = NAV_SEARCH;
-    } else if (s.spread < NAV_TRACK_ENTER_SPREAD) {
+    } else if (s.spread < NAV_TRACK_ENTER_SPREAD && s.walked >= NAV_TRACK_MIN_WALK_M) {
         st = NAV_TRACK;
     } else {
         st = (prev == NAV_TRACK) ? NAV_TRACK : NAV_SEARCH;

@@ -2,7 +2,7 @@
 #include <math.h>
 #include <string.h>
 
-#define JITTER_M          0.07f
+#define JITTER_M          0.15f
 #define CLUSTER_MIN_W     0.2f
 #define CLUSTER_MIN_SEP   1.0f
 #define CLUSTER_DOMINANT  0.85f
@@ -60,7 +60,7 @@ void pf_reseed_around(pf_t *pf, float x, float y, float spread, float path) {
 }
 
 static void resample(pf_t *pf) {
-    float nx[PF_N], ny[PF_N];
+    static float nx[PF_N], ny[PF_N];
     float step = 1.0f / PF_N;
     float u = rnd_unit(pf) * step;
     float c = pf->w[0];

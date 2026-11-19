@@ -38,15 +38,20 @@
 #define RANGE_TREND_WINDOW_MS   1500
 #define RANGE_TREND_EPS_M       0.15f
 
-#define PF_SIGMA_BASE_M         0.4f
+#define PF_SIGMA_BASE_M         0.6f
 #define PF_SIGMA_WALK_COEF      0.07f
 #define PF_SIGMA_MAX_M          1.5f
 #define PF_WINDOW_M             15.0f
-#define PF_RESEED_SPREAD_M      1.0f
+#define PF_RESEED_SPREAD_M      1.5f
+#define PF_MIN_MOVE_M           0.4f
+#define PF_MAX_IDLE_MS          3000
+#define PF_SIGMA_NOMAG_FACTOR   1.5f
+#define PF_SPREAD_DRIFT_COEF    0.05f
 
 #define NAV_CLOSE_ENTER_M       2.0f
 #define NAV_CLOSE_EXIT_M        2.4f
 #define NAV_TRACK_ENTER_SPREAD  1.5f
+#define NAV_TRACK_MIN_WALK_M    4.0f
 #define NAV_SEARCH_ENTER_SPREAD 2.0f
 #define NAV_ARROW_ALPHA         0.25f
 #define NAV_NEAR_M              0.4f

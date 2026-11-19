@@ -219,6 +219,7 @@ void motion_calibrate(progress_cb_t cb) {
     int n = 0;
     float acc_z = 0.0f;
     float acc_norm = 0.0f;
+    float best_sd = 1e9f, best_bias[3] = {0, 0, 0}, best_acc_z = 0.0f, best_acc_norm = 0.0f;
     acc_scale = 1.0f;
     for (int attempt = 0; attempt < GYRO_CAL_TRIES; attempt++) {
         memset(sum, 0, sizeof(sum));
@@ -248,15 +249,19 @@ void motion_calibrate(progress_cb_t cb) {
             float sd = var > 0.0f ? sqrtf(var) : 0.0f;
             if (sd > worst) worst = sd;
         }
+        if (n > 0 && worst < best_sd) {
+            best_sd = worst;
+            for (int i = 0; i < 3; i++) best_bias[i] = sum[i] / n;
+            best_acc_z = acc_z / n;
+            best_acc_norm = acc_norm / n;
+        }
         if (worst < GYRO_STILL_STD_RADS) break;
         ESP_LOGW(TAG, "unit moved during gyro calibration (std %.3f rad/s), retrying", worst);
     }
-    if (n > 0) {
-        for (int i = 0; i < 3; i++) gyro_bias[i] = sum[i] / n;
-        acc_z /= n;
-        acc_norm /= n;
-        if (acc_norm > 0.8f && acc_norm < 1.5f) acc_scale = 1.0f / acc_norm;
-    }
+    for (int i = 0; i < 3; i++) gyro_bias[i] = best_bias[i];
+    acc_z = best_acc_z;
+    acc_norm = best_acc_norm;
+    if (acc_norm > 0.8f && acc_norm < 1.5f) acc_scale = 1.0f / acc_norm;
     ESP_LOGI(TAG, "accel norm %.3f g, scale %.3f", acc_norm, acc_scale);
     ESP_LOGI(TAG, "gyro bias %.4f %.4f %.4f rad/s", gyro_bias[0], gyro_bias[1], gyro_bias[2]);
 
