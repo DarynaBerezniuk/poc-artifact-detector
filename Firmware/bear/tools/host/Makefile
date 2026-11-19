@@ -7,11 +7,16 @@ all: sim replay
 sim: sim.c $(SRC) $(HDR)
 	$(CC) $(CFLAGS) -o $@ sim.c $(SRC) -lm
 
-replay: replay.c ../../main/pf.c $(HDR)
-	$(CC) $(CFLAGS) -o $@ replay.c ../../main/pf.c -lm
+replay: replay.c ../../main/nav_core.c ../../main/pf.c ../../main/range_filter.c $(HDR)
+	$(CC) $(CFLAGS) -o $@ replay.c ../../main/nav_core.c ../../main/pf.c ../../main/range_filter.c -lm
+
+LOG ?= ../../../../../../logs.txt/2890\ MOTION\ gyro\ bias.txt
 
 test: sim
 	./sim
+
+replay-log: replay
+	./replay < $(LOG)
 
 clean:
 	rm -f sim replay

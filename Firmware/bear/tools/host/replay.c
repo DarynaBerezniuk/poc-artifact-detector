@@ -1,75 +1,302 @@
 #include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <math.h>
 #include "../../main/config.h"
-#include "../../main/pf.h"
+#include "../../main/nav_core.h"
 
-int main(void) {
-    char line[256];
-    pf_t pf;
-    pf_create(&pf, 99);
-    pf_est_t est;
-    float last_x = 0, last_y = 0, path = 0;
-    float upd_x = 0, upd_y = 0;
-    unsigned long upd_t = 0, last_t = 0;
-    int n = 0, resets = 0, n_two = 0;
-    while (fgets(line, sizeof(line), stdin)) {
-        unsigned long t;
-        float x, y, r, nlos, psi;
-        if (sscanf(line, "CSV,%lu,%f,%f,%f,%f,%f", &t, &x, &y, &r, &nlos, &psi) != 6) continue;
-        if (t < last_t) {
-            printf("--- new run ---\n");
-            pf_clear(&pf);
-            path = 0;
-            last_x = last_y = 0;
-        }
-        last_t = t;
-        path += hypotf(x - last_x, y - last_y);
-        last_x = x;
-        last_y = y;
+typedef struct {
+    double t_state[4];
+    double t_sideways;
+    double t_walk_around;
+    double t_arrow;
+    double t_two_raw;
+    double t_total;
+    int restarts;
+    int samples;
+} stats_t;
 
-        int fresh = 0;
-        if (!pf.inited) {
-            pf_init_ring(&pf, x, y, r, path);
-            fresh = 1;
-        } else if (path - pf.path_at_init > PF_WINDOW_M) {
-            pf_estimate(&pf, &est);
-            if (est.two_clusters) {
-                pf_init_ring(&pf, x, y, r, path);
-                fresh = 1;
-            } else {
-                pf_reseed_around(&pf, est.x, est.y, PF_RESEED_SPREAD_M, path);
+typedef struct {
+    double t_state[4];
+    double t_two;
+    double t_total;
+} dev_stats_t;
+
+#define MAX_ANCHORS 4096
+#define ANCHOR_R_M 0.7f
+#define ANCHOR_WINDOW_MS 20000
+#define ANCHOR_MIN_DIST_M 1.5f
+
+typedef struct {
+    int run;
+    unsigned long t;
+    float x, y;
+} anchor_t;
+
+static anchor_t anchors[MAX_ANCHORS];
+static int n_anchors = 0;
+static double arrow_checks = 0, arrow_good = 0, arrow_err_sum = 0;
+
+static const char *names[] = {"SEARCH", "TRACK", "CLOSE", "LOST"};
+
+static nav_core_t core;
+static nav_snap_t snap;
+static nav_view_state_t vs;
+static stats_t st;
+static dev_stats_t dev;
+static int verbose = 0;
+static unsigned seed = 99;
+static int passes = 10;
+static int pass = 0;
+static int run = 0;
+static int has_rng = 0;
+
+static struct {
+    int valid;
+    unsigned long t;
+    float x, y, r, nlos, psi;
+} pending;
+
+static float path = 0, last_x = 0, last_y = 0;
+static int mag_ok = 1;
+static unsigned long last_sample_t = 0, last_view_t = 0, last_print_t = 0;
+static unsigned long dev_last_t = 0;
+static int dev_have = 0;
+
+static void start_run(void) {
+    run++;
+    navc_init(&core, seed + 1000u * pass + run);
+    memset(&snap, 0, sizeof(snap));
+    navc_view_init(&vs);
+    path = last_x = last_y = 0;
+    last_sample_t = last_view_t = last_print_t = 0;
+    pending.valid = 0;
+    dev_have = 0;
+    if (verbose && pass == 0) printf("--- run %d ---\n", run);
+}
+
+static void process(unsigned long t, float x, float y, float raw, float nlos, float psi_deg) {
+    if (last_sample_t && t - last_sample_t > RANGE_LOST_MS) {
+        navc_reset(&core);
+        snap.have_pf = false;
+        snap.have_range = false;
+    }
+    path += hypotf(x - last_x, y - last_y);
+    last_x = x;
+    last_y = y;
+    nav_pose_t p = {x, y, path, psi_deg * (float)M_PI / 180.0f, mag_ok != 0, 0};
+    nav_step_info_t info;
+    navc_result_t res = navc_on_range(&core, (uint32_t)t, &p, raw, nlos, &snap, &info);
+    if (res == NAVC_RESTARTED) {
+        st.restarts++;
+        if (verbose && pass == 0) printf("t=%lu restart: estimate off by %.1f m\n", t, info.residual);
+    }
+    st.samples++;
+
+    nav_view_t v;
+    navc_view(&vs, &snap, &p, (uint32_t)t, &v);
+    if (v.have_arrow && snap.have_pf) {
+        const anchor_t *best = NULL;
+        long best_dt = ANCHOR_WINDOW_MS + 1;
+        for (int i = 0; i < n_anchors; i++) {
+            if (anchors[i].run != run) continue;
+            long d = labs((long)anchors[i].t - (long)t);
+            if (d < best_dt) {
+                best_dt = d;
+                best = &anchors[i];
             }
         }
-        if (fresh) {
-            upd_x = x;
-            upd_y = y;
-            upd_t = t;
-        }
-        float sig = hypotf(PF_SIGMA_BASE_M, PF_SIGMA_WALK_COEF * (path - pf.path_at_init));
-        if (sig > PF_SIGMA_MAX_M) sig = PF_SIGMA_MAX_M;
-        float scale = nlos > 6.0f ? 1.0f + 0.5f * (nlos - 6.0f) : 1.0f;
-        if (scale > 4.0f) scale = 4.0f;
-        if (!fresh && (hypotf(x - upd_x, y - upd_y) >= PF_MIN_MOVE_M || t - upd_t >= PF_MAX_IDLE_MS)) {
-            pf_update(&pf, x, y, r, sig * scale);
-            upd_x = x;
-            upd_y = y;
-            upd_t = t;
-        }
-        if (!fresh && pf_stale(&pf, x, y, r, PF_STALE_ERR_M + 2.0f * sig, (uint32_t)t, PF_STALE_MS)) {
-            printf("t=%lu reset: estimate off by %.1f m\n", t, pf_residual(&pf, x, y, r));
-            pf_init_ring(&pf, x, y, r, path);
-            upd_x = x;
-            upd_y = y;
-            upd_t = t;
-            resets++;
-        }
-        pf_estimate(&pf, &est);
-        n_two += est.two_clusters;
-        if (++n % 50 == 0) {
-            printf("t=%lu pos=(%.1f,%.1f) r=%.2f est=(%.2f,%.2f) pred=%.2f spread=%.2f two=%d\n",
-                   t, x, y, r, est.x, est.y, hypotf(est.x - x, est.y - y), est.spread, est.two_clusters);
+        if (best && hypotf(best->x - x, best->y - y) > ANCHOR_MIN_DIST_M) {
+            float b_est = atan2f(snap.ax - x, snap.ay - y);
+            float b_true = atan2f(best->x - x, best->y - y);
+            float e = b_est - b_true;
+            while (e > (float)M_PI) e -= 2.0f * (float)M_PI;
+            while (e < -(float)M_PI) e += 2.0f * (float)M_PI;
+            e = fabsf(e) * 180.0f / (float)M_PI;
+            arrow_checks++;
+            arrow_err_sum += e;
+            if (e <= 45.0f) arrow_good++;
         }
     }
-    printf("resets: %d, two clusters in %d of %d samples (%.0f%%)\n", resets, n_two, n, n ? 100.0 * n_two / n : 0.0);
+    if (last_view_t) {
+        double dt = (t - last_view_t) / 1000.0;
+        if (dt > 0.5) dt = 0.5;
+        st.t_total += dt;
+        st.t_state[v.state] += dt;
+        if (v.state == NAV_SEARCH) {
+            if (v.two_clusters) st.t_sideways += dt;
+            else st.t_walk_around += dt;
+            if (snap.two) st.t_two_raw += dt;
+        }
+        if (v.have_arrow) st.t_arrow += dt;
+    }
+    last_view_t = t;
+    last_sample_t = t;
+
+    if (verbose && pass == 0 && t - last_print_t >= 1000) {
+        last_print_t = t;
+        const char *text = "";
+        if (v.state == NAV_SEARCH) text = v.two_clusters ? "MOVE SIDEWAYS" : "WALK AROUND";
+        printf("t=%6.1f %-6s %-13s r=%5.2f pos=(%6.1f,%6.1f) art=(%6.1f,%6.1f) spread=%5.2f two=%d walked=%5.1f arrow=%s\n",
+               t / 1000.0, names[v.state], text, snap.range, x, y, snap.ax, snap.ay, snap.spread, snap.two,
+               snap.walked, v.have_arrow ? "yes" : "no");
+    }
+}
+
+static void flush_pending(void) {
+    if (!pending.valid) return;
+    pending.valid = 0;
+    process(pending.t, pending.x, pending.y, pending.r, pending.nlos, pending.psi);
+}
+
+static void device_nav_line(const char *line) {
+    unsigned long t;
+    char state[16];
+    if (sscanf(line, "NAV,%lu,%15[^,]", &t, state) != 2) return;
+    int two = strstr(line, ",two=1,") != NULL;
+    int idx = 0;
+    for (int i = 0; i < 4; i++) if (!strcmp(state, names[i])) idx = i;
+    if (dev_have && t > dev_last_t) {
+        double dt = (t - dev_last_t) / 1000.0;
+        if (dt > 1.0) dt = 1.0;
+        dev.t_total += dt;
+        dev.t_state[idx] += dt;
+        if (idx == NAV_SEARCH && two) dev.t_two += dt;
+    }
+    dev_last_t = t;
+    dev_have = 1;
+}
+
+int main(int argc, char **argv) {
+    for (int i = 1; i < argc; i++) {
+        if (!strcmp(argv[i], "-v")) verbose = 1;
+        else if (!strcmp(argv[i], "-s") && i + 1 < argc) seed = (unsigned)atoi(argv[++i]);
+        else if (!strcmp(argv[i], "-n") && i + 1 < argc) passes = atoi(argv[++i]);
+    }
+
+    size_t cap = 1 << 20, len = 0;
+    char *buf = malloc(cap);
+    size_t n;
+    while ((n = fread(buf + len, 1, cap - len, stdin)) > 0) {
+        len += n;
+        if (len == cap) buf = realloc(buf, cap *= 2);
+    }
+    buf = realloc(buf, len + 1);
+    buf[len] = 0;
+    has_rng = strstr(buf, "RNG,") != NULL;
+    if (passes < 1) passes = 1;
+    char *work = malloc(len + 1);
+
+    {
+        memcpy(work, buf, len + 1);
+        int arun = 1, nsamp = 0;
+        unsigned long at = 0, prev_t = 0;
+        float ax_ = 0, ay_ = 0, ar = 99;
+        int have = 0;
+        char *save = NULL;
+        for (char *line = strtok_r(work, "\n", &save); line; line = strtok_r(NULL, "\n", &save)) {
+            unsigned long t;
+            float x, y, r, nlos, psi, raw, filt;
+            if (strstr(line, "MPU6050: WHO_AM_I")) {
+                if (nsamp) arun++;
+                nsamp = 0;
+                prev_t = 0;
+                continue;
+            }
+            if (sscanf(line, "CSV,%lu,%f,%f,%f,%f,%f", &t, &x, &y, &r, &nlos, &psi) == 6) {
+                if (prev_t && t < prev_t) {
+                    arun++;
+                    nsamp = 0;
+                }
+                prev_t = t;
+                nsamp++;
+                at = t;
+                ax_ = x;
+                ay_ = y;
+                ar = r;
+                have = 1;
+                if (!has_rng && ar < ANCHOR_R_M && n_anchors < MAX_ANCHORS)
+                    anchors[n_anchors++] = (anchor_t){arun, at, ax_, ay_};
+                continue;
+            }
+            if (has_rng && have && sscanf(line, "RNG,%lu,%f,%f", &t, &raw, &filt) == 3 && t == at) {
+                if (raw < ANCHOR_R_M && n_anchors < MAX_ANCHORS) anchors[n_anchors++] = (anchor_t){arun, at, ax_, ay_};
+                have = 0;
+            }
+        }
+        (void)ar;
+    }
+
+    for (pass = 0; pass < passes; pass++) {
+    memcpy(work, buf, len + 1);
+    run = 0;
+    last_sample_t = 0;
+    int samples_before = st.samples;
+    start_run();
+    char *save = NULL;
+    for (char *line = strtok_r(work, "\n", &save); line; line = strtok_r(NULL, "\n", &save)) {
+        unsigned long t;
+        float x, y, r, nlos, psi, raw, filt, scale, ppm;
+        char *m;
+        if (strstr(line, "MPU6050: WHO_AM_I")) {
+            flush_pending();
+            if (st.samples > samples_before) start_run();
+            continue;
+        }
+        if ((m = strstr(line, "MOTION: psi")) != NULL) {
+            char *k = strstr(m, " mag ");
+            if (k) mag_ok = atoi(k + 5);
+            continue;
+        }
+        if (!strncmp(line, "NAV,", 4)) {
+            if (pass == 0) device_nav_line(line);
+            continue;
+        }
+        if (sscanf(line, "CSV,%lu,%f,%f,%f,%f,%f", &t, &x, &y, &r, &nlos, &psi) == 6) {
+            flush_pending();
+            if (last_sample_t && t < last_sample_t) start_run();
+            pending.valid = 1;
+            pending.t = t;
+            pending.x = x;
+            pending.y = y;
+            pending.r = r;
+            pending.nlos = nlos;
+            pending.psi = psi;
+            if (!has_rng) flush_pending();
+            continue;
+        }
+        if (sscanf(line, "RNG,%lu,%f,%f,%f,%f", &t, &raw, &filt, &scale, &ppm) == 5) {
+            if (pending.valid && pending.t == t) {
+                pending.r = raw;
+                flush_pending();
+            }
+            continue;
+        }
+    }
+    flush_pending();
+    }
+
+    double T = st.t_total > 0 ? st.t_total : 1;
+    printf("replay: %d range samples, %d run(s), %.0f s, ranges from %s, averaged over %d filter seeds\n",
+           st.samples / passes, run, st.t_total / passes, has_rng ? "raw RNG lines" : "filtered CSV lines", passes);
+    printf("  SEARCH %4.0f%%  (two candidates %4.0f%%; text MOVE SIDEWAYS %4.0f%%, WALK AROUND %4.0f%%)\n",
+           100 * st.t_state[NAV_SEARCH] / T, 100 * st.t_two_raw / T, 100 * st.t_sideways / T, 100 * st.t_walk_around / T);
+    printf("  TRACK  %4.0f%%   CLOSE %4.0f%%   arrow on screen %4.0f%%   restarts %.1f\n",
+           100 * st.t_state[NAV_TRACK] / T, 100 * st.t_state[NAV_CLOSE] / T, 100 * st.t_arrow / T,
+           (double)st.restarts / passes);
+    if (arrow_checks > 0)
+        printf("  arrow check against %d near-artifact spots: within 45 deg %4.0f%%, mean error %.0f deg (%d checks)\n",
+               n_anchors, 100 * arrow_good / arrow_checks, arrow_err_sum / arrow_checks, (int)(arrow_checks / passes));
+    else
+        printf("  arrow check: no near-artifact spots in the log to compare with\n");
+    if (dev.t_total > 0) {
+        double D = dev.t_total;
+        printf("device (firmware that wrote the log), %.0f s:\n", dev.t_total);
+        printf("  SEARCH %4.0f%%  (two candidates %4.0f%%)\n  TRACK  %4.0f%%   CLOSE %4.0f%%\n",
+               100 * dev.t_state[NAV_SEARCH] / D, 100 * dev.t_two / D, 100 * dev.t_state[NAV_TRACK] / D,
+               100 * dev.t_state[NAV_CLOSE] / D);
+    }
+    free(work);
+    free(buf);
     return 0;
 }
