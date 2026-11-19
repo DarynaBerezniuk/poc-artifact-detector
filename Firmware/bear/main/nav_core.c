@@ -34,6 +34,7 @@ static void start_ring(nav_core_t *c, uint32_t t, const nav_pose_t *p, float r) 
 void navc_init(nav_core_t *c, uint32_t seed) {
     memset(c, 0, sizeof(*c));
     pf_create(&c->pf, seed);
+    c->pf.learn_scale = PF_LEARN_STEP;
     rf_init(&c->rf, RANGE_MAX_JUMP_M, RANGE_EMA_ALPHA);
 }
 
@@ -62,7 +63,7 @@ navc_result_t navc_on_range(nav_core_t *c, uint32_t t, const nav_pose_t *p, floa
             start_ring(c, t, p, r);
             fresh_ring = true;
         } else {
-            pf_reseed_around(&c->pf, est.x, est.y, PF_RESEED_SPREAD_M, p->path);
+            pf_reseed_around(&c->pf, p->x, p->y, est.x, est.y, PF_RESEED_SPREAD_M, p->path);
         }
     }
 
@@ -83,6 +84,7 @@ navc_result_t navc_on_range(nav_core_t *c, uint32_t t, const nav_pose_t *p, floa
     }
     pf_estimate(&c->pf, &est);
     est.spread = hypotf(est.spread, PF_SPREAD_DRIFT_COEF * (p->path - c->pf.path_at_init));
+    if (c->pf.learn_scale && !est.two_clusters && est.spread < PF_SCALE_KEEP_SPREAD) pf_remember_scale(&c->pf, est.scale);
 
     float sm = rf_smoothed(&c->rf);
     hist_push(c, t, sm);
@@ -91,6 +93,9 @@ navc_result_t navc_on_range(nav_core_t *c, uint32_t t, const nav_pose_t *p, floa
     snap->ax = est.x;
     snap->ay = est.y;
     snap->spread = est.spread;
+    snap->ox = c->pf.ox;
+    snap->oy = c->pf.oy;
+    snap->scale = est.scale;
     snap->walked = p->path - c->ring_path;
     snap->two = est.two_clusters;
     snap->range = sm;
@@ -110,6 +115,12 @@ static float wrap_pi(float a) {
     while (a > (float)M_PI) a -= 2.0f * (float)M_PI;
     while (a < -(float)M_PI) a += 2.0f * (float)M_PI;
     return a;
+}
+
+void navc_user_pos(const nav_snap_t *s, const nav_pose_t *p, float *ux, float *uy) {
+    float k = s->scale > 0.0f ? s->scale : 1.0f;
+    *ux = s->ox + k * (p->x - s->ox);
+    *uy = s->oy + k * (p->y - s->oy);
 }
 
 void navc_view_init(nav_view_state_t *vs) {
@@ -166,7 +177,9 @@ void navc_view(nav_view_state_t *vs, const nav_snap_t *s, const nav_pose_t *p, u
     if (s->range < NAV_ARROW_MIN_M) vs->near = true;
     else if (s->range > NAV_ARROW_MIN_M + NAV_ARROW_HYST_M) vs->near = false;
     bool arrow_ok = s->have_pf && !s->two && s->spread < NAV_SEARCH_ENTER_SPREAD && s->walked >= NAV_TRACK_MIN_WALK_M;
-    float d_est = hypotf(s->ax - p->x, s->ay - p->y);
+    float ux, uy;
+    navc_user_pos(s, p, &ux, &uy);
+    float d_est = hypotf(s->ax - ux, s->ay - uy);
     float unc = d_est > 1e-3f ? s->spread / d_est : 1e3f;
     if (vs->bearing_ok) {
         if (unc > NAV_ARROW_UNC_OFF || d_est < NAV_ARROW_MIN_M) vs->bearing_ok = false;
@@ -174,7 +187,7 @@ void navc_view(nav_view_state_t *vs, const nav_snap_t *s, const nav_pose_t *p, u
         if (unc < NAV_ARROW_UNC_ON && d_est >= NAV_ARROW_MIN_M + NAV_ARROW_HYST_M) vs->bearing_ok = true;
     }
     if (vs->bearing_ok && (st == NAV_TRACK || (st == NAV_CLOSE && arrow_ok && !vs->near))) {
-        float theta = atan2f(s->ax - p->x, s->ay - p->y);
+        float theta = atan2f(s->ax - ux, s->ay - uy);
         float a = NAV_ARROW_ALPHA * d_est / NAV_ARROW_SMOOTH_M;
         if (a > NAV_ARROW_ALPHA) a = NAV_ARROW_ALPHA;
         if (a < NAV_ARROW_ALPHA_MIN) a = NAV_ARROW_ALPHA_MIN;

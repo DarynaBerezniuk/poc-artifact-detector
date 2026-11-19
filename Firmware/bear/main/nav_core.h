@@ -24,6 +24,7 @@ typedef struct {
 typedef struct {
     bool have_pf;
     float ax, ay, spread, walked;
+    float ox, oy, scale;
     bool two;
     float range;
     bool have_range;
@@ -87,4 +88,5 @@ void navc_reset(nav_core_t *c);
 navc_result_t navc_on_range(nav_core_t *c, uint32_t t, const nav_pose_t *p, float raw_m, float nlos_db,
                             nav_snap_t *snap, nav_step_info_t *info);
 void navc_view_init(nav_view_state_t *vs);
+void navc_user_pos(const nav_snap_t *s, const nav_pose_t *p, float *ux, float *uy);
 void navc_view(nav_view_state_t *vs, const nav_snap_t *s, const nav_pose_t *p, uint32_t t, nav_view_t *v);

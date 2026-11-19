@@ -68,8 +68,8 @@ static void nav_task(void *arg) {
                 printf("RNG,%lu,%.3f,%.3f,%.2f,%.3f,%.2f,%ld\n", (unsigned long)t, s.dist_m, info.r, info.scale,
                        s.clock_ppm, s.nlos_db, (long)s.clock_raw);
 #endif
-                printf("EST,%lu,%.2f,%.2f,%.2f,%d\n", (unsigned long)t, info.est.x, info.est.y, info.est.spread,
-                       info.est.two_clusters);
+                printf("EST,%lu,%.2f,%.2f,%.2f,%d,%.2f\n", (unsigned long)t, info.est.x, info.est.y, info.est.spread,
+                       info.est.two_clusters, info.est.scale * STEP_LENGTH_M);
             }
 #endif
         } else {
@@ -127,7 +127,9 @@ void nav_view_update(nav_view_t *v) {
     if (v->state != NAV_LOST && t - nav_log_ms >= 500) {
         nav_log_ms = t;
         static const char *names[] = {"SEARCH", "TRACK", "CLOSE", "LOST"};
-        float bearing = s.have_pf ? atan2f(s.ax - p.x, s.ay - p.y) * 180.0f / (float)M_PI : 0.0f;
+        float ux, uy;
+        navc_user_pos(&s, &p, &ux, &uy);
+        float bearing = s.have_pf ? atan2f(s.ax - ux, s.ay - uy) * 180.0f / (float)M_PI : 0.0f;
         printf("NAV,%lu,%s,shown=%.2f,range=%.2f,trend=%d,spread=%.2f,two=%d,pf=%d,art=%.2f,%.2f,bearing=%.0f,psi=%.0f,arrow=%.0f,magok=%d,steps=%lu\n",
                (unsigned long)t, names[v->state], v->range_m, s.range, s.trend, s.spread, s.two, s.have_pf,
                s.ax, s.ay, bearing, p.psi * 180.0f / (float)M_PI,

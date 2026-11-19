@@ -60,6 +60,8 @@
 #define PF_SPREAD_DRIFT_COEF    0.05f
 #define PF_STALE_ERR_M          2.5f
 #define PF_STALE_MS             4000
+#define PF_LEARN_STEP           1
+#define PF_SCALE_KEEP_SPREAD    1.0f
 
 #define NAV_CLOSE_ENTER_M       2.0f
 #define NAV_CLOSE_EXIT_M        2.4f
