@@ -132,7 +132,7 @@ static void nav_task(void *arg) {
                 printf("CSV,%lu,%.3f,%.3f,%.3f,%.2f,%.1f\n", (unsigned long)t, p.x, p.y, r,
                        s.nlos_db, p.psi * 180.0f / (float)M_PI);
 #if LOG_UWB_RAW
-                printf("RNG,%lu,%.3f,%.3f,%.2f,%.1f,%.2f\n", (unsigned long)t, s.dist_m, r, scale, s.clock_ppm, s.nlos_db);
+                printf("RNG,%lu,%.3f,%.3f,%.2f,%.3f,%.2f,%ld\n", (unsigned long)t, s.dist_m, r, scale, s.clock_ppm, s.nlos_db, (long)s.clock_raw);
 #endif
                 printf("EST,%lu,%.2f,%.2f,%.2f,%d\n", (unsigned long)t, est.x, est.y, est.spread, est.two_clusters);
 #endif

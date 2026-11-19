@@ -157,8 +157,10 @@ bool uwb_measure(uint8_t seq, uwb_sample_t *out) {
     }
 
     float clock_ratio = 0.0f;
+    int32_t clock_raw = 0;
 #if UWB_CLOCK_CORRECT
-    clock_ratio = (float)dwt_readcarrierintegrator() * (float)(FREQ_OFFSET_MULTIPLIER * HERTZ_TO_PPM_MULTIPLIER_CHAN_2 / 1.0e6);
+    clock_raw = dwt_readcarrierintegrator();
+    clock_ratio = (float)clock_raw * (float)(FREQ_OFFSET_MULTIPLIER * HERTZ_TO_PPM_MULTIPLIER_CHAN_2 / 1.0e6);
 #endif
     uint32_t frame_len = dwt_read32bitreg(RX_FINFO_ID) & RX_FINFO_RXFLEN_MASK;
     if (frame_len < (MSG_MIN_RESP_LEN + 2) || frame_len > sizeof(rx_buffer)) {
@@ -187,5 +189,7 @@ bool uwb_measure(uint8_t seq, uwb_sample_t *out) {
 
     out->dist_m = dist_m;
     out->nlos_db = nlos_indicator_db();
+    out->clock_ppm = clock_ratio * 1.0e6f;
+    out->clock_raw = clock_raw;
     return true;
 }
