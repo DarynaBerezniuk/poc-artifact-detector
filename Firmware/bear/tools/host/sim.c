@@ -69,7 +69,7 @@ static int test_heading(void) {
     return bad;
 }
 
-static int test_pf(int curved, float *err_out) {
+static int test_pf(int curved, int move_at, float *err_out) {
     pf_t pf;
     pf_create(&pf, 12345);
     range_filter_t rf;
@@ -84,10 +84,17 @@ static int test_pf(int curved, float *err_out) {
     pf_est_t est;
     float step = 0.7f;
     float heading = 0.0f;
+    uint32_t t_ms = 0;
+    int resets = 0;
     for (int i = 0; i < 200; i++) {
         float h;
         if (!curved) h = 90.0f * M_PI / 180.0f;
-        else h = (i < 25 ? 90.0f : (i < 50 ? 0.0f : 135.0f)) * M_PI / 180.0f;
+        else if (move_at < 0) h = (i < 25 ? 90.0f : (i < 50 ? 0.0f : 135.0f)) * M_PI / 180.0f;
+        else h = (i < 25 ? 90.0f : (i < 50 ? 0.0f : (i < 100 ? 135.0f : (i < 130 ? 45.0f : 315.0f)))) * M_PI / 180.0f;
+        if (i == move_at) {
+            ax = px - 4.0f;
+            ay = py + 6.0f;
+        }
         heading = h;
         px += step * sinf(h);
         py += step * cosf(h);
@@ -100,12 +107,17 @@ static int test_pf(int curved, float *err_out) {
             float r = tr + 0.1f * gauss();
             if (frand() < 0.03f) r += 3.0f;
             float out, sc;
+            t_ms += 250;
             if (rf_push(&rf, r, 0.0f, &out, &sc)) {
                 if (!pf.inited) pf_init_ring(&pf, pdr_x, pdr_y, out, path);
                 float wd = path - pf.path_at_init;
-                float sig = sqrtf(0.4f * 0.4f + (0.07f * wd) * (0.07f * wd));
+                float sig = sqrtf(0.6f * 0.6f + (0.07f * wd) * (0.07f * wd));
                 if (sig > 1.5f) sig = 1.5f;
                 pf_update(&pf, pdr_x, pdr_y, out, sig * sc);
+                if (pf_stale(&pf, pdr_x, pdr_y, out, 1.5f + 2.0f * sig, t_ms, 2000)) {
+                    pf_init_ring(&pf, pdr_x, pdr_y, out, path);
+                    resets++;
+                }
             }
         }
         (void)heading; (void)t; (void)n;
@@ -118,8 +130,8 @@ static int test_pf(int curved, float *err_out) {
     }
     float e = hypotf(est.x - ax, est.y - ay);
     *err_out = e;
-    printf("final err %.2f m (two=%d)\n", e, est.two_clusters);
-    return 0;
+    printf("final err %.2f m (two=%d) resets %d\n", e, est.two_clusters, resets);
+    return resets;
 }
 
 static int test_steps(void) {
@@ -140,12 +152,16 @@ int main(void) {
     int bad = 0;
     bad += test_heading();
     bad += test_steps();
-    float e1, e2;
+    float e1, e2, e3;
     printf("straight walk:\n");
-    test_pf(0, &e1);
+    int r1 = test_pf(0, -1, &e1);
     printf("curved walk:\n");
-    test_pf(1, &e2);
-    if (e2 > 1.5f) bad++;
+    int r2 = test_pf(1, -1, &e2);
+    if (e2 > 1.5f || r2 != 0) bad++;
+    printf("curved walk, artifact moved at step 100:\n");
+    int r3 = test_pf(1, 100, &e3);
+    if (e3 > 1.5f || r3 < 1) bad++;
+    (void)r1;
     printf("%s\n", bad ? "FAIL" : "PASS");
     return bad != 0;
 }
