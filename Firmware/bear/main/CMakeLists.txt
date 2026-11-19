@@ -13,6 +13,7 @@ idf_component_register(
         "hmc5883l.c"
         "madgwick.c"
         "mag_kf.c"
+        "gyro_bias.c"
         "pdr.c"
         "pf.c"
         "range_filter.c"

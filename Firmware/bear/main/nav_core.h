@@ -78,6 +78,7 @@ typedef struct {
     uint32_t two_since;
     float sx, sy;
     bool arrow_init;
+    bool near;
 } nav_view_state_t;
 
 void navc_init(nav_core_t *c, uint32_t seed);

@@ -132,6 +132,7 @@ void navc_view(nav_view_state_t *vs, const nav_snap_t *s, const nav_pose_t *p, u
         vs->prev = NAV_LOST;
         vs->arrow_init = false;
         vs->two_prev = false;
+        vs->near = false;
         return;
     }
 
@@ -161,8 +162,10 @@ void navc_view(nav_view_state_t *vs, const nav_snap_t *s, const nav_pose_t *p, u
     vs->prev = st;
     v->state = st;
 
+    if (s->range < NAV_ARROW_MIN_M) vs->near = true;
+    else if (s->range > NAV_ARROW_MIN_M + NAV_ARROW_HYST_M) vs->near = false;
     bool arrow_ok = s->have_pf && !s->two && s->spread < NAV_SEARCH_ENTER_SPREAD && s->walked >= NAV_TRACK_MIN_WALK_M;
-    if (st == NAV_TRACK || (st == NAV_CLOSE && arrow_ok && s->range >= NAV_ARROW_MIN_M)) {
+    if (st == NAV_TRACK || (st == NAV_CLOSE && arrow_ok && !vs->near)) {
         float theta = atan2f(s->ax - p->x, s->ay - p->y);
         float rel = wrap_pi(theta - p->psi);
         if (!vs->arrow_init) {
