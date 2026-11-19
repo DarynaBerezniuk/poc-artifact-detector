@@ -29,7 +29,7 @@
 #define UWB_SPI_FAST_HZ     4000000
 #define UWB_CLOCK_CORRECT       1
 #define UWB_ANT_DELAY           16436
-#define RANGE_BIAS_M            0.0f
+#define RANGE_BIAS_M            (-0.3f)
 #define RANGE_MAX_JUMP_M        1.5f
 #define RANGE_EMA_ALPHA         0.5f
 #define RANGE_MAX_M             30.0f
@@ -55,3 +55,5 @@
 #define UI_FPS                  15
 #define LOG_CSV                 1
 #define LOG_AXES                1
+#define LOG_NAV                 1
+#define LOG_UWB_RAW             1

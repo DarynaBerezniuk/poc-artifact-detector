@@ -80,6 +80,7 @@ static void nav_task(void *arg) {
     rf_init(&rf, RANGE_MAX_JUMP_M, RANGE_EMA_ALPHA);
     uint8_t seq = 0;
     bool locked = false;
+    uint32_t n_ok = 0, n_fail = 0, stat_ms = 0;
     TickType_t last = xTaskGetTickCount();
     const TickType_t period = pdMS_TO_TICKS(UWB_PERIOD_MS);
 
@@ -88,6 +89,7 @@ static void nav_task(void *arg) {
         uwb_sample_t s;
         uint32_t t = now_ms();
         if (uwb_measure(seq++, &s)) {
+            n_ok++;
             portENTER_CRITICAL(&shared_lock);
             shared.last_range_ms = t;
             portEXIT_CRITICAL(&shared_lock);
@@ -129,13 +131,28 @@ static void nav_task(void *arg) {
 #if LOG_CSV
                 printf("CSV,%lu,%.3f,%.3f,%.3f,%.2f,%.1f\n", (unsigned long)t, p.x, p.y, r,
                        s.nlos_db, p.psi * 180.0f / (float)M_PI);
+#if LOG_UWB_RAW
+                printf("RNG,%lu,%.3f,%.3f,%.2f,%.1f,%.2f\n", (unsigned long)t, s.dist_m, r, scale, s.clock_ppm, s.nlos_db);
+#endif
+                printf("EST,%lu,%.2f,%.2f,%.2f,%d\n", (unsigned long)t, est.x, est.y, est.spread, est.two_clusters);
 #endif
             }
-        } else if (locked && (t - shared.last_range_ms) > RANGE_LOST_MS) {
-            locked = false;
-            drop_lock();
-            ESP_LOGW(TAG, "artifact lost");
+        } else {
+            n_fail++;
+            if (locked && (t - shared.last_range_ms) > RANGE_LOST_MS) {
+                locked = false;
+                drop_lock();
+                ESP_LOGW(TAG, "artifact lost");
+            }
         }
+#if LOG_UWB_RAW
+        if (t - stat_ms >= 1000) {
+            stat_ms = t;
+            ESP_LOGI(TAG, "UWB ok %lu fail %lu (last second) locked %d", (unsigned long)n_ok, (unsigned long)n_fail, locked);
+            n_ok = 0;
+            n_fail = 0;
+        }
+#endif
     }
 }
 
@@ -226,4 +243,17 @@ void nav_view_update(nav_view_t *v) {
     } else {
         arrow_init = false;
     }
+
+#if LOG_NAV
+    static uint32_t nav_log_ms = 0;
+    if (t - nav_log_ms >= 500) {
+        nav_log_ms = t;
+        static const char *names[] = {"SEARCH", "TRACK", "CLOSE", "LOST"};
+        float bearing = s.have_pf ? atan2f(s.ax - p.x, s.ay - p.y) * 180.0f / (float)M_PI : 0.0f;
+        printf("NAV,%lu,%s,shown=%.2f,range=%.2f,trend=%d,spread=%.2f,two=%d,pf=%d,art=%.2f,%.2f,bearing=%.0f,psi=%.0f,arrow=%.0f,magok=%d,steps=%lu\n",
+               (unsigned long)t, names[st], v->range_m, s.range, s.trend, s.spread, s.two, s.have_pf,
+               s.ax, s.ay, bearing, p.psi * 180.0f / (float)M_PI,
+               v->have_arrow ? v->arrow_rad * 180.0f / (float)M_PI : 0.0f, p.mag_ok, (unsigned long)p.steps);
+    }
+#endif
 }

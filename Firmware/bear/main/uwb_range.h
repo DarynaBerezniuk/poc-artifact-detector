@@ -6,6 +6,7 @@
 typedef struct {
     float dist_m;
     float nlos_db;
+    float clock_ppm;
 } uwb_sample_t;
 
 esp_err_t uwb_init(void);
