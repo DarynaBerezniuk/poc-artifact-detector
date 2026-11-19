@@ -37,6 +37,16 @@ static anchor_t anchors[MAX_ANCHORS];
 static int n_anchors = 0;
 static double arrow_checks = 0, arrow_good = 0, arrow_err_sum = 0;
 static double jit_sum[3], jit_time[3], flips[3];
+#define HIST_N 64
+#define WALK_CHECK_MS 2000
+#define WALK_MIN_M 1.0f
+static struct {
+    unsigned long t;
+    float x, y, r, arrow_world;
+    int arrow;
+} hist[HIST_N];
+static int hist_head = 0, hist_count = 0;
+static double walk_checks = 0, walk_agree = 0, walk_err_sum = 0;
 static int prev_arrow_valid = 0;
 static float prev_arrow = 0;
 
@@ -50,6 +60,7 @@ static dev_stats_t dev;
 static int verbose = 0;
 static unsigned seed = 99;
 static int passes = 10;
+static float step_scale = 1.0f;
 static int pass = 0;
 static int run = 0;
 static int has_rng = 0;
@@ -75,10 +86,14 @@ static void start_run(void) {
     last_sample_t = last_view_t = last_print_t = 0;
     pending.valid = 0;
     dev_have = 0;
+    hist_count = 0;
+    hist_head = 0;
     if (verbose && pass == 0) printf("--- run %d ---\n", run);
 }
 
 static void process(unsigned long t, float x, float y, float raw, float nlos, float psi_deg) {
+    x *= step_scale;
+    y *= step_scale;
     if (last_sample_t && t - last_sample_t > RANGE_LOST_MS) {
         navc_reset(&core);
         snap.have_pf = false;
@@ -137,6 +152,33 @@ static void process(unsigned long t, float x, float y, float raw, float nlos, fl
     }
     prev_arrow_valid = v.have_arrow;
     prev_arrow = world_bearing;
+
+    if (snap.have_range) {
+        for (int k = 0; k < hist_count; k++) {
+            int i = (hist_head - 1 - k + HIST_N) % HIST_N;
+            if (t - hist[i].t < WALK_CHECK_MS) continue;
+            float dx = x - hist[i].x, dy = y - hist[i].y, dm = hypotf(dx, dy);
+            if (hist[i].arrow && dm >= WALK_MIN_M && t - hist[i].t < 2 * WALK_CHECK_MS) {
+                float c_true = -(snap.range - hist[i].r) / dm;
+                if (c_true > 1.0f) c_true = 1.0f;
+                if (c_true < -1.0f) c_true = -1.0f;
+                float c_pred = cosf(atan2f(dx, dy) - hist[i].arrow_world);
+                float a_true = acosf(c_true), a_pred = acosf(c_pred);
+                walk_checks++;
+                walk_err_sum += fabsf(a_true - a_pred) * 180.0f / (float)M_PI;
+                if ((c_true > 0) == (c_pred > 0)) walk_agree++;
+            }
+            break;
+        }
+        hist[hist_head].t = t;
+        hist[hist_head].x = x;
+        hist[hist_head].y = y;
+        hist[hist_head].r = snap.range;
+        hist[hist_head].arrow_world = world_bearing;
+        hist[hist_head].arrow = v.have_arrow;
+        hist_head = (hist_head + 1) % HIST_N;
+        if (hist_count < HIST_N) hist_count++;
+    }
     if (last_view_t) {
         double dt = (t - last_view_t) / 1000.0;
         if (dt > 0.5) dt = 0.5;
@@ -191,6 +233,7 @@ int main(int argc, char **argv) {
         if (!strcmp(argv[i], "-v")) verbose = 1;
         else if (!strcmp(argv[i], "-s") && i + 1 < argc) seed = (unsigned)atoi(argv[++i]);
         else if (!strcmp(argv[i], "-n") && i + 1 < argc) passes = atoi(argv[++i]);
+        else if (!strcmp(argv[i], "-k") && i + 1 < argc) step_scale = (float)atof(argv[++i]);
     }
 
     size_t cap = 1 << 20, len = 0;
@@ -308,6 +351,9 @@ int main(int argc, char **argv) {
                n_anchors, 100 * arrow_good / arrow_checks, arrow_err_sum / arrow_checks, (int)(arrow_checks / passes));
     else
         printf("  arrow check: no near-artifact spots in the log to compare with\n");
+    if (walk_checks > 0)
+        printf("  walking check (range change vs arrow, whole log): right side %4.0f%%, angle error %.0f deg (%d checks)\n",
+               100 * walk_agree / walk_checks, walk_err_sum / walk_checks, (int)(walk_checks / passes));
     {
         static const char *bands[] = {"< 2 m", "2-4 m", "> 4 m"};
         printf("  shown arrow direction noise (turning of the device excluded):");
