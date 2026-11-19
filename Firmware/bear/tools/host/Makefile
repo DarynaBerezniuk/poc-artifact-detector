@@ -1,4 +1,4 @@
-SRC = ../../main/madgwick.c ../../main/pdr.c ../../main/pf.c ../../main/range_filter.c
+SRC = ../../main/madgwick.c ../../main/mag_kf.c ../../main/pdr.c ../../main/pf.c ../../main/range_filter.c
 CFLAGS = -O2 -Wall -Wextra
 HDR = $(wildcard ../../main/*.h)
 

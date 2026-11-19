@@ -4,6 +4,7 @@
 #include <string.h>
 #include "../../main/config.h"
 #include "../../main/madgwick.h"
+#include "../../main/mag_kf.h"
 #include "../../main/pdr.h"
 #include "../../main/pf.h"
 #include "../../main/range_filter.h"
@@ -148,6 +149,88 @@ static int count_steps(float thr, float amp, float noise, float shake_amp, float
     return steps;
 }
 
+static int test_mag_kf(void) {
+    mag_kf_t k;
+    mag_kf_init(&k, MAG_KF_Q, MAG_KF_R, MAG_KF_GATE, MAG_KF_MAX_REJECTS);
+    const float wx = 0.20f, wy = 0.0f, wz = -0.45f;
+    const float noise = 0.01f;
+    float yaw = 0.0f;
+    double se_raw = 0, se_kf = 0, se_spike = 0;
+    int n = 0, n_spike = 0, accepted_spikes = 0;
+    for (int i = 0; i < 1200; i++) {
+        float t = i / 100.0f;
+        float w = (t > 2.0f && t < 6.0f) ? 1.57f : 0.0f;
+        yaw += w * 0.01f;
+        float g[3] = {0.0f, 0.0f, w + 0.01f};
+        mag_kf_predict(&k, g, 0.01f);
+        float c = cosf(yaw), s = sinf(yaw);
+        float truth[3] = {c * wx + s * wy, -s * wx + c * wy, wz};
+        if (i % 4 == 3) continue;
+        float z[3];
+        for (int j = 0; j < 3; j++) z[j] = truth[j] + noise * gauss();
+        bool spike = (i % 150 == 100);
+        if (spike) z[0] += 1.0f;
+        bool acc = mag_kf_update(&k, z);
+        if (i < 50) continue;
+        float e_raw = 0, e_kf = 0;
+        for (int j = 0; j < 3; j++) {
+            e_raw += (z[j] - truth[j]) * (z[j] - truth[j]);
+            e_kf += (k.m[j] - truth[j]) * (k.m[j] - truth[j]);
+        }
+        if (spike) {
+            n_spike++;
+            se_spike += e_kf;
+            if (acc) accepted_spikes++;
+            continue;
+        }
+        se_raw += e_raw;
+        se_kf += e_kf;
+        n++;
+    }
+    float rms_raw = sqrtf(se_raw / n), rms_kf = sqrtf(se_kf / n), rms_spike = sqrtf(se_spike / n_spike);
+    printf("mag kalman: raw error %.4f G, filtered %.4f G (incl. 90 deg/s turns), at spikes %.4f G, spikes accepted %d of %d\n",
+           rms_raw, rms_kf, rms_spike, accepted_spikes, n_spike);
+    return !(rms_kf < 0.7f * rms_raw && rms_spike < 0.05f && accepted_spikes == 0);
+}
+
+static int test_straight_no_guess(void) {
+    int two = 0, right = 0, wrong = 0;
+    for (int seed = 1; seed <= 200; seed++) {
+        srand(seed);
+        pf_t pf;
+        pf_create(&pf, seed * 7 + 1);
+        range_filter_t rf;
+        rf_init(&rf, RANGE_MAX_JUMP_M, RANGE_EMA_ALPHA);
+        float ax = 6, ay = 4, px = 0, py = 0, dx = 0, dy = 0, path = 0;
+        pf_est_t est;
+        for (int i = 0; i < 60; i++) {
+            float h = M_PI / 2;
+            px += 0.7f * sinf(h);
+            py += 0.7f * cosf(h);
+            path += 0.7f;
+            float hn = h + 0.03f * gauss();
+            dx += 0.7f * sinf(hn) * (1 + 0.03f * gauss());
+            dy += 0.7f * cosf(hn) * (1 + 0.03f * gauss());
+            for (int k = 0; k < 2; k++) {
+                float r = hypotf(ax - px, ay - py) + 0.1f * gauss(), out, sc;
+                if (rf_push(&rf, r, 0, &out, &sc)) {
+                    if (!pf.inited) pf_init_ring(&pf, dx, dy, out, path);
+                    float sig = hypotf(PF_SIGMA_BASE_M, PF_SIGMA_WALK_COEF * (path - pf.path_at_init));
+                    if (sig > PF_SIGMA_MAX_M) sig = PF_SIGMA_MAX_M;
+                    pf_update(&pf, dx, dy, out, sig * sc);
+                }
+            }
+        }
+        pf_estimate(&pf, &est);
+        if (est.two_clusters) two++;
+        else if (hypotf(est.x - ax, est.y - ay) < 2.0f) right++;
+        else wrong++;
+    }
+    printf("straight walk x200: two candidates %d, guessed right %d, guessed WRONG %d (must stay <= 10)\n", two, right, wrong);
+    srand(7);
+    return wrong > 10;
+}
+
 static int test_steps(void) {
     int normal = count_steps(STEP_THRESHOLD_G, 0.35f, 0.03f, 0.0f, 0.0f);
     int gentle = count_steps(STEP_THRESHOLD_G, 0.12f, 0.01f, 0.0f, 0.0f);
@@ -163,6 +246,8 @@ int main(void) {
     int bad = 0;
     bad += test_heading();
     bad += test_steps();
+    bad += test_mag_kf();
+    bad += test_straight_no_guess();
     float e1, e2, e3;
     printf("straight walk:\n");
     int r1 = test_pf(0, -1, &e1);
