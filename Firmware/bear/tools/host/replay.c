@@ -113,6 +113,7 @@ static void process(unsigned long t, float x, float y, float raw, float nlos, fl
 
     nav_view_t v;
     navc_view(&vs, &snap, &p, (uint32_t)t, &v);
+    float world_bearing = v.arrow_rad + p.psi;
     if (v.have_arrow && snap.have_pf) {
         const anchor_t *best = NULL;
         long best_dt = ANCHOR_WINDOW_MS + 1;
@@ -125,7 +126,7 @@ static void process(unsigned long t, float x, float y, float raw, float nlos, fl
             }
         }
         if (best && hypotf(best->x - x, best->y - y) > ANCHOR_MIN_DIST_M) {
-            float b_est = atan2f(snap.ax - x, snap.ay - y);
+            float b_est = world_bearing;
             float b_true = atan2f(best->x - x, best->y - y);
             float e = b_est - b_true;
             while (e > (float)M_PI) e -= 2.0f * (float)M_PI;
@@ -136,7 +137,6 @@ static void process(unsigned long t, float x, float y, float raw, float nlos, fl
             if (e <= 45.0f) arrow_good++;
         }
     }
-    float world_bearing = v.arrow_rad + p.psi;
     if (v.have_arrow && prev_arrow_valid && last_view_t) {
         float d = world_bearing - prev_arrow;
         while (d > (float)M_PI) d -= 2.0f * (float)M_PI;

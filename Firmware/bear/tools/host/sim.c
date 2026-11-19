@@ -5,6 +5,7 @@
 #include "../../main/config.h"
 #include "../../main/madgwick.h"
 #include "../../main/mag_kf.h"
+#include "../../main/gyro_bias.h"
 #include "../../main/pdr.h"
 #include "../../main/pf.h"
 #include "../../main/range_filter.h"
@@ -231,6 +232,107 @@ static int test_straight_no_guess(void) {
     return wrong > 10;
 }
 
+static float run_gyro_bias(int mode, float secs, int *updates) {
+    const float truth[3] = {0.03f, -0.02f, 0.03f};
+    const float start[3] = {0.0f, 0.0f, -0.098f};
+    gyro_bias_t g;
+    gyro_bias_init(&g, start);
+    *updates = 0;
+    for (int i = 0; i < (int)(secs * 100); i++) {
+        float t = i / 100.0f;
+        float raw[3], an;
+        for (int j = 0; j < 3; j++) raw[j] = truth[j] + 0.003f * gauss();
+        an = 1.0f + 0.002f * gauss();
+        if (mode == 1) {
+            for (int j = 0; j < 3; j++) raw[j] += 0.04f * gauss();
+            an += 0.02f * gauss();
+        } else if (mode == 2) {
+            raw[2] += 0.5f * sinf(2 * M_PI * 0.9f * t);
+            raw[0] += 0.3f * sinf(2 * M_PI * 1.8f * t);
+            an += 0.2f * fmaxf(0, sinf(2 * M_PI * 1.8f * t));
+        }
+        if (gyro_bias_update(&g, raw, an, 0.01f)) (*updates)++;
+    }
+    float e = 0;
+    for (int j = 0; j < 3; j++) e = fmaxf(e, fabsf(g.b[j] - truth[j]));
+    return e;
+}
+
+static int test_gyro_bias(void) {
+    int u0, u1, u2;
+    float e0 = run_gyro_bias(0, 15.0f, &u0);
+    float e1 = run_gyro_bias(1, 15.0f, &u1);
+    float e2 = run_gyro_bias(2, 15.0f, &u2);
+    printf("gyro bias, start 0.128 rad/s off: on a table error %.4f rad/s; in a shaking hand %d updates; walking %d updates (expect 0)\n",
+           e0, u1, u2);
+    (void)e1;
+    (void)e2;
+    return !(e0 < 0.005f && u1 == 0 && u2 == 0);
+}
+
+static void run_scale_case(int learn, float true_step, float *mean_err, float *good, float *scale_out) {
+    double err_sum = 0, good_n = 0, n = 0, sc_sum = 0;
+    for (int seed = 1; seed <= 20; seed++) {
+        srand(100 + seed);
+        pf_t pf;
+        pf_create(&pf, seed * 13 + 5);
+        pf.learn_scale = learn;
+        range_filter_t rf;
+        rf_init(&rf, RANGE_MAX_JUMP_M, RANGE_EMA_ALPHA);
+        float ax = 5.0f, ay = 7.0f, px = 0, py = 0, dx = 0, dy = 0, path = 0;
+        pf_est_t est;
+        for (int i = 0; i < 160; i++) {
+            float hd = (i < 20 ? 90.0f : (i < 45 ? 0.0f : (i < 70 ? 225.0f : (i < 100 ? 120.0f : (i < 130 ? 330.0f : 60.0f)))));
+            float h = hd * (float)M_PI / 180.0f;
+            px += true_step * sinf(h);
+            py += true_step * cosf(h);
+            path += STEP_LENGTH_M;
+            float hn = h + 0.03f * gauss();
+            dx += STEP_LENGTH_M * sinf(hn);
+            dy += STEP_LENGTH_M * cosf(hn);
+            for (int k = 0; k < 2; k++) {
+                float r = hypotf(ax - px, ay - py) + 0.1f * gauss(), out, sc;
+                if (rf_push(&rf, r, 0, &out, &sc)) {
+                    if (!pf.inited) pf_init_ring(&pf, dx, dy, out, path);
+                    float sig = hypotf(PF_SIGMA_BASE_M, PF_SIGMA_WALK_COEF * (path - pf.path_at_init));
+                    if (sig > PF_SIGMA_MAX_M) sig = PF_SIGMA_MAX_M;
+                    pf_update(&pf, dx, dy, out, sig * sc);
+                }
+            }
+            if (i >= 60 && pf.inited) {
+                pf_estimate(&pf, &est);
+                if (est.two_clusters) continue;
+                float ux, uy;
+                pf_user_pos(&pf, est.scale, dx, dy, &ux, &uy);
+                float e = atan2f(est.x - ux, est.y - uy) - atan2f(ax - px, ay - py);
+                while (e > (float)M_PI) e -= 2.0f * (float)M_PI;
+                while (e < -(float)M_PI) e += 2.0f * (float)M_PI;
+                e = fabsf(e) * 180.0f / (float)M_PI;
+                err_sum += e;
+                if (e <= 45.0f) good_n++;
+                n++;
+            }
+        }
+        pf_estimate(&pf, &est);
+        sc_sum += est.scale * STEP_LENGTH_M;
+    }
+    *mean_err = n ? err_sum / n : 180.0f;
+    *good = n ? 100.0 * good_n / n : 0.0f;
+    *scale_out = sc_sum / 20.0;
+}
+
+static int test_step_learning(void) {
+    float e0, g0, s0, e1, g1, s1, e2, g2, s2;
+    run_scale_case(0, 0.40f, &e0, &g0, &s0);
+    run_scale_case(1, 0.40f, &e1, &g1, &s1);
+    run_scale_case(1, STEP_LENGTH_M, &e2, &g2, &s2);
+    printf("step learning, real step 0.40 m vs assumed %.2f m: fixed step %.0f deg (%.0f%% within 45), learned %.0f deg (%.0f%%), learned step %.2f m\n",
+           STEP_LENGTH_M, e0, g0, e1, g1, s1);
+    printf("step learning, real step = assumed: learned %.0f deg (%.0f%% within 45), learned step %.2f m\n", e2, g2, s2);
+    srand(7);
+    return !(e1 < e0 && fabsf(s1 - 0.40f) < 0.08f && e2 < 25.0f);
+}
+
 static int test_steps(void) {
     int normal = count_steps(STEP_THRESHOLD_G, 0.35f, 0.03f, 0.0f, 0.0f);
     int gentle = count_steps(STEP_THRESHOLD_G, 0.12f, 0.01f, 0.0f, 0.0f);
@@ -247,7 +349,9 @@ int main(void) {
     bad += test_heading();
     bad += test_steps();
     bad += test_mag_kf();
+    bad += test_gyro_bias();
     bad += test_straight_no_guess();
+    bad += test_step_learning();
     float e1, e2, e3;
     printf("straight walk:\n");
     int r1 = test_pf(0, -1, &e1);
