@@ -133,8 +133,16 @@ static void draw_frame(const nav_view_t *v, uint32_t t) {
             }
             break;
         case NAV_TRACK:
-            if (v->have_arrow) draw_arrow(v->arrow_rad);
-            gfx_text_center(CX, 188, buf, 3, COL_BRIGHT);
+            if (v->have_arrow) {
+                draw_arrow(v->arrow_rad);
+                gfx_text_center(CX, 188, buf, 3, COL_BRIGHT);
+            } else {
+                gfx_text_center(CX, 80, buf, 5, COL_BRIGHT);
+                gfx_text_center(CX, 122, "M", 2, COL_MID);
+                if (v->trend < 0) gfx_text_center(CX, 150, "WARMER", 3, COL_BRIGHT);
+                else if (v->trend > 0) gfx_text_center(CX, 150, "COLDER", 3, COL_AMBER);
+                else gfx_text_center(CX, 150, "STEADY", 3, COL_MID);
+            }
             break;
         default:
             gfx_text_center(CX, 66, buf, 5, COL_BRIGHT);

@@ -19,6 +19,7 @@
 #define MAG_KF_R                4e-4f
 #define MAG_KF_GATE             4.0f
 #define MAG_KF_MAX_REJECTS      25
+#define MAG_KF_REF_G            0.45f
 #define ACC_VALID_MIN_G         0.7f
 #define ACC_VALID_MAX_G         1.3f
 #define UPSIDE_DOWN_RECAL_G     (-0.7f)
@@ -68,7 +69,11 @@
 #define NAV_TRACK_MIN_WALK_M    2.0f
 #define NAV_SEARCH_ENTER_SPREAD 2.0f
 #define NAV_ARROW_ALPHA         0.25f
-#define NAV_ARROW_INVERT        1
+#define NAV_ARROW_INVERT        0
+#define NAV_ARROW_ALPHA_MIN     0.06f
+#define NAV_ARROW_SMOOTH_M      4.0f
+#define NAV_ARROW_UNC_ON        0.6f
+#define NAV_ARROW_UNC_OFF       0.8f
 #define NAV_TWO_HOLD_MS         2000
 #define NAV_NEAR_M              0.4f
 #define NAV_FAR_M               12.0f

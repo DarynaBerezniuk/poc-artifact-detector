@@ -79,6 +79,7 @@ typedef struct {
     float sx, sy;
     bool arrow_init;
     bool near;
+    bool bearing_ok;
 } nav_view_state_t;
 
 void navc_init(nav_core_t *c, uint32_t seed);

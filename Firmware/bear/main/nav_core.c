@@ -133,6 +133,7 @@ void navc_view(nav_view_state_t *vs, const nav_snap_t *s, const nav_pose_t *p, u
         vs->arrow_init = false;
         vs->two_prev = false;
         vs->near = false;
+        vs->bearing_ok = false;
         return;
     }
 
@@ -165,18 +166,27 @@ void navc_view(nav_view_state_t *vs, const nav_snap_t *s, const nav_pose_t *p, u
     if (s->range < NAV_ARROW_MIN_M) vs->near = true;
     else if (s->range > NAV_ARROW_MIN_M + NAV_ARROW_HYST_M) vs->near = false;
     bool arrow_ok = s->have_pf && !s->two && s->spread < NAV_SEARCH_ENTER_SPREAD && s->walked >= NAV_TRACK_MIN_WALK_M;
-    if (st == NAV_TRACK || (st == NAV_CLOSE && arrow_ok && !vs->near)) {
+    float d_est = hypotf(s->ax - p->x, s->ay - p->y);
+    float unc = d_est > 1e-3f ? s->spread / d_est : 1e3f;
+    if (vs->bearing_ok) {
+        if (unc > NAV_ARROW_UNC_OFF || d_est < NAV_ARROW_MIN_M) vs->bearing_ok = false;
+    } else {
+        if (unc < NAV_ARROW_UNC_ON && d_est >= NAV_ARROW_MIN_M + NAV_ARROW_HYST_M) vs->bearing_ok = true;
+    }
+    if (vs->bearing_ok && (st == NAV_TRACK || (st == NAV_CLOSE && arrow_ok && !vs->near))) {
         float theta = atan2f(s->ax - p->x, s->ay - p->y);
-        float rel = wrap_pi(theta - p->psi);
+        float a = NAV_ARROW_ALPHA * d_est / NAV_ARROW_SMOOTH_M;
+        if (a > NAV_ARROW_ALPHA) a = NAV_ARROW_ALPHA;
+        if (a < NAV_ARROW_ALPHA_MIN) a = NAV_ARROW_ALPHA_MIN;
         if (!vs->arrow_init) {
-            vs->sx = sinf(rel);
-            vs->sy = cosf(rel);
+            vs->sx = sinf(theta);
+            vs->sy = cosf(theta);
             vs->arrow_init = true;
         } else {
-            vs->sx += NAV_ARROW_ALPHA * (sinf(rel) - vs->sx);
-            vs->sy += NAV_ARROW_ALPHA * (cosf(rel) - vs->sy);
+            vs->sx += a * (sinf(theta) - vs->sx);
+            vs->sy += a * (cosf(theta) - vs->sy);
         }
-        v->arrow_rad = atan2f(vs->sx, vs->sy);
+        v->arrow_rad = wrap_pi(atan2f(vs->sx, vs->sy) - p->psi);
         if (NAV_ARROW_INVERT) v->arrow_rad = wrap_pi(v->arrow_rad + (float)M_PI);
         v->have_arrow = true;
     } else {

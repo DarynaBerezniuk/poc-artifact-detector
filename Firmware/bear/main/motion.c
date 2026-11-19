@@ -335,6 +335,10 @@ void motion_calibrate(progress_cb_t cb) {
         }
     }
 
+    if (mcal_valid) {
+        float k = mcal.ref / MAG_KF_REF_G;
+        mag_kf_init(&mkf, MAG_KF_Q * k * k, MAG_KF_R * k * k, MAG_KF_GATE, MAG_KF_MAX_REJECTS);
+    }
     madgwick_init(&filt, IMU_BETA_ALIGN);
     uint32_t ta = now_ms();
     float dt = 1.0f / IMU_RATE_HZ;
