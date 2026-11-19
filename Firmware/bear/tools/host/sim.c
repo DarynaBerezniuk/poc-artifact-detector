@@ -2,6 +2,7 @@
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
+#include "../../main/config.h"
 #include "../../main/madgwick.h"
 #include "../../main/pdr.h"
 #include "../../main/pf.h"
@@ -114,7 +115,7 @@ static int test_pf(int curved, int move_at, float *err_out) {
                 float sig = sqrtf(0.6f * 0.6f + (0.07f * wd) * (0.07f * wd));
                 if (sig > 1.5f) sig = 1.5f;
                 pf_update(&pf, pdr_x, pdr_y, out, sig * sc);
-                if (pf_stale(&pf, pdr_x, pdr_y, out, 1.5f + 2.0f * sig, t_ms, 2000)) {
+                if (pf_stale(&pf, pdr_x, pdr_y, out, PF_STALE_ERR_M + 2.0f * sig, t_ms, PF_STALE_MS)) {
                     pf_init_ring(&pf, pdr_x, pdr_y, out, path);
                     resets++;
                 }

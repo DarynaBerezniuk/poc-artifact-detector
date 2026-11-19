@@ -11,7 +11,7 @@ int main(void) {
     float last_x = 0, last_y = 0, path = 0;
     float upd_x = 0, upd_y = 0;
     unsigned long upd_t = 0, last_t = 0;
-    int n = 0, resets = 0;
+    int n = 0, resets = 0, n_two = 0;
     while (fgets(line, sizeof(line), stdin)) {
         unsigned long t;
         float x, y, r, nlos, psi;
@@ -64,11 +64,12 @@ int main(void) {
             resets++;
         }
         pf_estimate(&pf, &est);
+        n_two += est.two_clusters;
         if (++n % 50 == 0) {
             printf("t=%lu pos=(%.1f,%.1f) r=%.2f est=(%.2f,%.2f) pred=%.2f spread=%.2f two=%d\n",
                    t, x, y, r, est.x, est.y, hypotf(est.x - x, est.y - y), est.spread, est.two_clusters);
         }
     }
-    printf("resets: %d\n", resets);
+    printf("resets: %d, two clusters in %d of %d samples (%.0f%%)\n", resets, n_two, n, n ? 100.0 * n_two / n : 0.0);
     return 0;
 }
