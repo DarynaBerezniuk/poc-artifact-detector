@@ -170,7 +170,7 @@ void pf_estimate(const pf_t *pf, pf_est_t *est) {
     float sd1 = w1 > 1e-6f ? sqrtf(v1 / w1) : 0.0f;
     float sep = sqrtf((c0x - c1x) * (c0x - c1x) + (c0y - c1y) * (c0y - c1y));
     float sd_max = sd0 > sd1 ? sd0 : sd1;
-    float sep_need = 2.0f * sd_max;
+    float sep_need = 3.0f * sd_max;
     if (sep_need < CLUSTER_MIN_SEP) sep_need = CLUSTER_MIN_SEP;
 
     est->cx[0] = c0x; est->cy[0] = c0y; est->cw[0] = w0;

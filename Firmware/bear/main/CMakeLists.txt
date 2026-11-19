@@ -5,6 +5,7 @@ idf_component_register(
         "gfx.c"
         "gc9a01.c"
         "nav.c"
+        "nav_core.c"
         "motion.c"
         "uwb_range.c"
         "i2c_bus.c"
